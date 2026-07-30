@@ -1,6 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, push, set, update, onValue } from 'firebase/database';
+import {
+  getDatabase,
+  ref,
+  push,
+  set,
+  update,
+  onValue,
+} from 'firebase/database';
 import {
   Coffee,
   Snowflake,
@@ -36,14 +43,15 @@ import type { LucideIcon } from 'lucide-react';
 /* ------------------------------------------------------------------ */
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBUNGi_itL7fpOW4r71vfpec8Gj2L3QzNg",
-  authDomain: "cofnrob.firebaseapp.com",
-  databaseURL: "https://cofnrob-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "cofnrob",
-  storageBucket: "cofnrob.firebasestorage.app",
-  messagingSenderId: "573015850115",
-  appId: "1:573015850115:web:169caa653cfd257a686fb6",
-  measurementId: "G-G38R9R3MHC"
+  apiKey: 'AIzaSyBUNGi_itL7fpOW4r71vfpec8Gj2L3QzNg',
+  authDomain: 'cofnrob.firebaseapp.com',
+  databaseURL:
+    'https://cofnrob-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId: 'cofnrob',
+  storageBucket: 'cofnrob.firebasestorage.app',
+  messagingSenderId: '573015850115',
+  appId: '1:573015850115:web:169caa653cfd257a686fb6',
+  measurementId: 'G-G38R9R3MHC',
 };
 
 const app = initializeApp(firebaseConfig);
@@ -53,7 +61,7 @@ const db = getDatabase(app);
 /*  TYPES & INTERFACES                                                */
 /* ------------------------------------------------------------------ */
 
-type ThemeType = 'blue' | 'brown' | 'teal' | 'gray';
+type ThemeType = 'blue' | 'brown' | 'teal' | 'gray' | 'green';
 type CategoryType = 'ICED COFFEE' | 'HOT COFFEE' | 'MATCHA & TEA' | 'OTHERS';
 type OrderStatus = 'pending' | 'cancelled' | 'done';
 
@@ -96,11 +104,10 @@ interface CategoryMetaItem {
 }
 
 /* ------------------------------------------------------------------ */
-/*  MENU DATA (UPDATED PRICES & THEMES)                               */
+/*  MENU DATA                                                         */
 /* ------------------------------------------------------------------ */
 
 const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
-  // ICED COFFEE — blue gradient
   {
     id: 'ic01',
     name: 'Ice Americano',
@@ -198,7 +205,6 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     price: 55,
   },
 
-  // HOT COFFEE — brown gradient
   {
     id: 'hc01',
     name: 'Hot Americano',
@@ -256,13 +262,12 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     price: 45,
   },
 
-  // MATCHA & TEA — blue gradient for cold drinks
   {
     id: 'mt01',
     name: 'Iced Matcha Latte',
     nameTh: 'มัทฉะลาเต้เย็น',
     category: 'MATCHA & TEA',
-    theme: 'blue',
+    theme: 'green',
     price: 65,
   },
   {
@@ -270,7 +275,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     name: 'Ice Matcha Coffee',
     nameTh: 'มัทฉะกาแฟ',
     category: 'MATCHA & TEA',
-    theme: 'blue',
+    theme: 'green',
     price: 70,
   },
   {
@@ -278,7 +283,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     name: 'Iced Matcha',
     nameTh: 'มัทฉะเย็น',
     category: 'MATCHA & TEA',
-    theme: 'blue',
+    theme: 'green',
     price: 60,
   },
   {
@@ -286,7 +291,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     name: 'Iced Matcha Orange',
     nameTh: 'มัทฉะส้ม',
     category: 'MATCHA & TEA',
-    theme: 'blue',
+    theme: 'green',
     price: 65,
   },
   {
@@ -294,7 +299,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     name: 'Lemon Tea',
     nameTh: 'ชามะนาว',
     category: 'MATCHA & TEA',
-    theme: 'blue',
+    theme: 'green',
     price: 40,
   },
   {
@@ -302,7 +307,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     name: 'Peach tea',
     nameTh: 'ชาพีช',
     category: 'MATCHA & TEA',
-    theme: 'blue',
+    theme: 'green',
     price: 40,
   },
   {
@@ -310,11 +315,10 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     name: 'Cocoa',
     nameTh: 'โกโก้',
     category: 'MATCHA & TEA',
-    theme: 'blue',
+    theme: 'green',
     price: 50,
   },
 
-  // OTHERS
   {
     id: 'co02',
     name: 'Extra shot',
@@ -349,7 +353,7 @@ const CATEGORY_META: Record<CategoryType, CategoryMetaItem> = {
     icon: Leaf,
     label: 'Matcha & Tea',
     labelTh: 'มัทฉะ & ชา',
-    theme: 'blue',
+    theme: 'green',
   },
   OTHERS: { icon: Coffee, label: 'Others', labelTh: 'อื่นๆ', theme: 'gray' },
 };
@@ -375,6 +379,12 @@ const BUTTON_THEME: Record<
     text: 'text-white font-extrabold',
     price: 'text-teal-100 font-black',
     sub: 'text-teal-100/90 font-medium',
+  },
+  green: {
+    grad: 'bg-gradient-to-r from-emerald-800 via-emerald-700 to-green-600 border-emerald-500/50 hover:from-emerald-700 hover:to-green-500 shadow-[0_4px_20px_rgba(16,185,129,0.3)]',
+    text: 'text-white font-extrabold',
+    price: 'text-emerald-100 font-black',
+    sub: 'text-emerald-100/90 font-medium',
   },
   gray: {
     grad: 'bg-gradient-to-r from-stone-700 via-neutral-700 to-zinc-600 border-stone-500/50 hover:from-stone-600 hover:to-zinc-500 shadow-[0_4px_20px_rgba(113,113,122,0.3)]',
@@ -482,7 +492,6 @@ function useOrderSound(enabled: boolean) {
       tone(880, 0.1, 0.15, 'sine', 0.4);
     },
     playIncoming: () => {
-      // Made louder and more prominent with square waves and higher gains
       tone(880, 0, 0.2, 'square', 1.5);
       tone(1174.66, 0.2, 0.2, 'square', 1.5);
       tone(1318.51, 0.4, 0.3, 'square', 1.5);
@@ -515,27 +524,39 @@ export default function App() {
   const [soundOn, setSoundOn] = useState<boolean>(true);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [shopOpen, setShopOpen] = useState<boolean>(true);
-  const [shopMessage, setShopMessage] = useState<string>('ร้านปิดให้บริการชั่วคราว');
+  const [shopMessage, setShopMessage] = useState<string>(
+    'ร้านปิดให้บริการชั่วคราว'
+  );
   const sound = useOrderSound(soundOn);
 
   useEffect(() => {
+    const stockRef = ref(db, 'menuStock');
+    const unsubscribeStock = onValue(stockRef, (snapshot) => {
+      const stockData = snapshot.val();
+      if (stockData) {
+        setMenu((prev) =>
+          prev.map((m) => ({
+            ...m,
+            available: stockData[m.id] !== undefined ? stockData[m.id] : true,
+          }))
+        );
+      }
+    });
+
     const shopRef = ref(db, 'shopOpen');
     const unsubscribeShop = onValue(shopRef, (snapshot) => {
       const val = snapshot.val();
-      if (val !== null) {
-        setShopOpen(val);
-      }
+      if (val !== null) setShopOpen(val);
     });
 
     const msgRef = ref(db, 'shopMessage');
     const unsubscribeMsg = onValue(msgRef, (snapshot) => {
       const val = snapshot.val();
-      if (val !== null) {
-        setShopMessage(val);
-      }
+      if (val !== null) setShopMessage(val);
     });
 
     return () => {
+      unsubscribeStock();
       unsubscribeShop();
       unsubscribeMsg();
     };
@@ -545,7 +566,9 @@ export default function App() {
     const newStatus = !shopOpen;
     setShopOpen(newStatus);
     set(ref(db, 'shopOpen'), newStatus);
-    setToast(newStatus ? 'เปิดร้านแล้ว (Shop is Open)' : 'ปิดร้านแล้ว (Shop is Closed)');
+    setToast(
+      newStatus ? 'เปิดร้านแล้ว (Shop is Open)' : 'ปิดร้านแล้ว (Shop is Closed)'
+    );
   }
 
   function updateShopMessage(newMsg: string) {
@@ -641,7 +664,9 @@ export default function App() {
     }
     if (!modalItem) return;
     const newCartItem: CartItem = {
-      cartId: `${modalItem.id}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      cartId: `${modalItem.id}-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 4)}`,
       itemId: modalItem.id,
       name: modalItem.name,
       nameTh: modalItem.nameTh,
@@ -662,21 +687,22 @@ export default function App() {
   }
 
   function updateCartQty(cartId: string, delta: number) {
-    setCart((prev) =>
-      prev
-        .map((item) => {
-          if (item.cartId === cartId) {
-            const newQty = item.qty + delta;
-            if (newQty <= 0) return null;
-            return {
-              ...item,
-              qty: newQty,
-              total: item.unitPrice * newQty,
-            };
-          }
-          return item;
-        })
-        .filter(Boolean) as CartItem[]
+    setCart(
+      (prev) =>
+        prev
+          .map((item) => {
+            if (item.cartId === cartId) {
+              const newQty = item.qty + delta;
+              if (newQty <= 0) return null;
+              return {
+                ...item,
+                qty: newQty,
+                total: item.unitPrice * newQty,
+              };
+            }
+            return item;
+          })
+          .filter(Boolean) as CartItem[]
     );
   }
 
@@ -713,25 +739,25 @@ export default function App() {
   }
 
   function toggleStock(id: string) {
-    setMenu((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, available: !m.available } : m))
-    );
+    const item = menu.find((m) => m.id === id);
+    if (!item) return;
+    const nextStatus = !item.available;
+    set(ref(db, `menuStock/${id}`), nextStatus);
   }
 
   function updateMenuItem(id: string, updates: Partial<MenuItem>) {
     setMenu((prev) =>
       prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
     );
+    if (updates.available !== undefined) {
+      set(ref(db, `menuStock/${id}`), updates.available);
+    }
     setEditingItem(null);
     setToast(`อัปเดตเมนู ${updates.name || ''} เรียบร้อย`);
   }
 
   const activeOrders = useMemo(
     () => orders.filter((o) => o.status === 'pending'),
-    [orders]
-  );
-  const doneOrders = useMemo(
-    () => orders.filter((o) => o.status === 'done' || o.status === 'cancelled'),
     [orders]
   );
 
@@ -900,7 +926,11 @@ function CustomerView({
         </div>
       )}
 
-      <div className={`space-y-8 ${!shopOpen ? 'opacity-60 pointer-events-none' : ''}`}>
+      <div
+        className={`space-y-8 ${
+          !shopOpen ? 'opacity-60 pointer-events-none' : ''
+        }`}
+      >
         {CATEGORY_ORDER.map((cat) => {
           const meta = CATEGORY_META[cat];
           const Icon = meta.icon;
@@ -913,7 +943,7 @@ function CustomerView({
           return (
             <div key={cat}>
               <div className="flex items-center gap-2 mb-3">
-                <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-amber-400/10 border border-amber-400/30 text-amber-400">
+                <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-400/10 border border-emerald-400/30 text-emerald-400">
                   <Icon size={16} />
                 </span>
                 <h2 className="text-base font-bold text-white tracking-wide">
@@ -1051,7 +1081,10 @@ function CustomerView({
                       : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
                   }`}
                 >
-                  <Send size={18} /> {shopOpen ? 'ส่งออเดอร์ · Send Order' : 'ร้านปิดอยู่ (Closed)'}
+                  <Send size={18} />{' '}
+                  {shopOpen
+                    ? 'ส่งออเดอร์ · Send Order'
+                    : 'ร้านปิดอยู่ (Closed)'}
                 </button>
               </div>
             )}
@@ -1299,7 +1332,11 @@ function BaristaView({
                 : 'bg-rose-500/20 border-rose-400/50 text-rose-300 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
             }`}
           >
-            <span className={`w-2 h-2 rounded-full ${shopOpen ? 'bg-emerald-400 animate-ping' : 'bg-rose-400'}`} />
+            <span
+              className={`w-2 h-2 rounded-full ${
+                shopOpen ? 'bg-emerald-400 animate-ping' : 'bg-rose-400'
+              }`}
+            />
             {shopOpen ? 'เปิดร้านอยู่ (Open)' : 'ปิดร้านแล้ว (Closed)'}
           </button>
 
@@ -1319,7 +1356,8 @@ function BaristaView({
       <div className="mt-4 p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col sm:flex-row items-center gap-3">
         <div className="flex-1 w-full">
           <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
-            ข้อความแจ้งหน้าร้านเมื่อปิด (เช่น ปิด 3 วัน, ปิดให้บริการชั่วคราว ฯลฯ)
+            ข้อความแจ้งหน้าร้านเมื่อปิด (เช่น ปิด 3 วัน, ปิดให้บริการชั่วคราว
+            ฯลฯ)
           </label>
           <div className="flex gap-2">
             <input
