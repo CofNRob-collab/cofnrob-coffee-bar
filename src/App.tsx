@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getDatabase, 
@@ -13,11 +13,9 @@ import {
   Coffee, 
   ShoppingBag, 
   CheckCircle, 
-  Clock, 
   Eye, 
   EyeOff, 
   Calendar, 
-  Search, 
   Sparkles,
   Plus,
   Minus,
