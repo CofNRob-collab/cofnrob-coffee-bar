@@ -14,7 +14,6 @@ import {
   Minus,
   X,
   Radio,
-  ToggleLeft,
   ToggleRight,
   Zap,
   ListChecks,
@@ -693,7 +692,7 @@ export default function App() {
     () => orders.filter((o) => o.status === 'pending'),
     [orders]
   );
-  const doneOrders = useMemo(
+  const _doneOrders = useMemo(
     () => orders.filter((o) => o.status === 'done' || o.status === 'cancelled'),
     [orders]
   );
