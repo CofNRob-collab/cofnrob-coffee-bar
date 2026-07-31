@@ -35,6 +35,8 @@ import {
   Calendar,
   XCircle,
   EyeOff,
+  ArrowLeft,
+  ChevronRight,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -101,6 +103,7 @@ interface CategoryMetaItem {
   label: string;
   labelTh: string;
   theme: ThemeType;
+  desc: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -326,11 +329,10 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
 ];
 
-const CATEGORY_ORDER: CategoryType[] = [
+const MAIN_GROUPS: CategoryType[] = [
   'ICED COFFEE',
   'HOT COFFEE',
   'MATCHA & TEA',
-  'OTHERS',
 ];
 
 const CATEGORY_META: Record<CategoryType, CategoryMetaItem> = {
@@ -339,20 +341,29 @@ const CATEGORY_META: Record<CategoryType, CategoryMetaItem> = {
     label: 'Iced Coffee',
     labelTh: 'กาแฟเย็น',
     theme: 'blue',
+    desc: 'เมนูกาแฟสกัดสด เสิร์ฟพร้อมน้ำแข็งเพิ่มความสดชื่น',
   },
   'HOT COFFEE': {
     icon: Flame,
     label: 'Hot Coffee',
     labelTh: 'กาแฟร้อน',
     theme: 'brown',
+    desc: 'รสชาติเข้มข้น หอมกรุ่นกาแฟคั่วบดใหม่ๆ',
   },
   'MATCHA & TEA': {
     icon: Leaf,
     label: 'Matcha & Tea',
     labelTh: 'มัทฉะ & ชา',
     theme: 'green',
+    desc: 'มัทฉะเกรดพรีเมียม ชาผลไม้ และโกโก้รสเข้ม',
   },
-  OTHERS: { icon: Coffee, label: 'Others', labelTh: 'อื่นๆ', theme: 'gray' },
+  OTHERS: {
+    icon: Coffee,
+    label: 'Others',
+    labelTh: 'อื่นๆ',
+    theme: 'gray',
+    desc: 'ส่วนเพิ่มเติมอื่นๆ',
+  },
 };
 
 const BUTTON_THEME: Record<
@@ -856,11 +867,31 @@ function CustomerView({
   shopMessage,
 }: CustomerViewProps) {
   const [isCartOpen, setIsCartOpen] = useState(false);
+  // State เพิ่มใหม่สำหรับเก็บ Icon Group ที่ถูกเลือก
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType | null>(null);
+
   const cartTotal = cart.reduce((sum, item) => sum + item.total, 0);
   const totalCartItems = cart.reduce((sum, i) => sum + i.qty, 0);
 
+  // คำนวณเมนูที่จะแสดงเมื่อเลือกหมวดหมู่
+  const visibleItems = useMemo(() => {
+    if (!selectedCategory) return [];
+    
+    // ดึงเมนูเฉพาะของหมวดหมู่นั้นๆ
+    const catItems = menu.filter((m) => m.category === selectedCategory && m.available);
+    
+    // ถ้าเลือกหมวด กาแฟเย็น หรือ กาแฟร้อน ให้นำเมนู Extra shot (OTHERS) มารวมแสดงต่อท้ายด้วย
+    if (selectedCategory === 'ICED COFFEE' || selectedCategory === 'HOT COFFEE') {
+      const extraShots = menu.filter((m) => m.category === 'OTHERS' && m.available);
+      return [...catItems, ...extraShots];
+    }
+
+    return catItems;
+  }, [menu, selectedCategory]);
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-28">
+      {/* Header */}
       <div className="pb-6 mb-6 border-b border-white/15">
         <div className="flex items-center justify-between">
           <div>
@@ -930,45 +961,113 @@ function CustomerView({
       )}
 
       <div
-        className={`space-y-8 ${
+        className={`space-y-6 ${
           !shopOpen ? 'opacity-60 pointer-events-none' : ''
         }`}
       >
-        {CATEGORY_ORDER.map((cat) => {
-          const meta = CATEGORY_META[cat];
-          const Icon = meta.icon;
-          const visibleItems = menu.filter(
-            (m) => m.category === cat && m.available
-          );
+        {/* แสดงผล Icon Groups 3 หมวดหมู่ใหญ่เมื่อยังไม่ได้เลือกกลุ่ม */}
+        {!selectedCategory ? (
+          <div>
+            <h2 className="text-base font-bold text-neutral-300 mb-4">
+              เลือกหมวดหมู่เครื่องดื่ม (Select Category)
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {MAIN_GROUPS.map((catKey) => {
+                const meta = CATEGORY_META[catKey];
+                const Icon = meta.icon;
+                return (
+                  <button
+                    key={catKey}
+                    onClick={() => setSelectedCategory(catKey)}
+                    className="group relative text-left p-6 rounded-3xl bg-white/[0.03] border border-white/10 hover:border-amber-400/50 hover:bg-white/[0.06] transition-all flex flex-col justify-between overflow-hidden shadow-lg active:scale-[0.98]"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="p-3.5 rounded-2xl bg-amber-400/10 text-amber-400 group-hover:scale-110 transition-transform">
+                        <Icon size={32} />
+                      </div>
+                      <ChevronRight className="text-neutral-500 group-hover:text-amber-400 transition-colors" size={24} />
+                    </div>
 
-          if (visibleItems.length === 0) return null;
+                    <div className="mt-8">
+                      <h3 className="text-xl font-black text-white tracking-wide">
+                        {meta.labelTh}
+                      </h3>
+                      <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest mt-0.5">
+                        {meta.label}
+                      </p>
+                      <p className="text-xs text-neutral-400 mt-2 font-normal">
+                        {meta.desc}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          /* Render รายการเมนูเมื่อทำการกดเลือก Group Icon แล้ว */
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <button
+                onClick={() => setSelectedCategory(null)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 hover:bg-white/[0.1] text-amber-400 text-xs font-bold transition-all"
+              >
+                <ArrowLeft size={16} /> กลับไปเลือกหมวดหมู่ (Back to Categories)
+              </button>
 
-          return (
-            <div key={cat}>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-400/10 border border-emerald-400/30 text-emerald-400">
-                  <Icon size={16} />
-                </span>
-                <h2 className="text-base font-bold text-white tracking-wide">
-                  {meta.label}
-                </h2>
-                <span className="text-xs text-neutral-400">
-                  ({meta.labelTh})
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                {visibleItems.map((item) => (
-                  <MenuButton
-                    key={item.id}
-                    item={item}
-                    onClick={() => openModal(item)}
-                  />
-                ))}
+              <div className="flex items-center gap-2">
+                {MAIN_GROUPS.map((catKey) => {
+                  const meta = CATEGORY_META[catKey];
+                  const Icon = meta.icon;
+                  return (
+                    <button
+                      key={catKey}
+                      onClick={() => setSelectedCategory(catKey)}
+                      className={`p-2 rounded-xl border transition-colors flex items-center gap-1.5 text-xs font-bold ${
+                        selectedCategory === catKey
+                          ? 'bg-amber-400 border-amber-400 text-black'
+                          : 'bg-white/[0.03] border-white/10 text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      <Icon size={14} />
+                      <span className="hidden sm:inline">{meta.labelTh}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          );
-        })}
+
+            <div className="flex items-center gap-2 mb-4">
+              {(() => {
+                const meta = CATEGORY_META[selectedCategory];
+                const Icon = meta.icon;
+                return (
+                  <>
+                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-400/10 border border-amber-400/30 text-amber-400">
+                      <Icon size={18} />
+                    </span>
+                    <div>
+                      <h2 className="text-lg font-bold text-white tracking-wide">
+                        {meta.labelTh}
+                      </h2>
+                      <p className="text-xs text-neutral-400">{meta.label}</p>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {visibleItems.map((item) => (
+                <MenuButton
+                  key={item.id}
+                  item={item}
+                  onClick={() => openModal(item)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {isCartOpen && (
@@ -1771,13 +1870,20 @@ function StockControl({
   menu: MenuItem[];
   toggleStock: (id: string) => void;
 }) {
+  const categories: CategoryType[] = [
+    'ICED COFFEE',
+    'HOT COFFEE',
+    'MATCHA & TEA',
+    'OTHERS',
+  ];
+
   return (
     <div className="mt-6">
       <p className="text-xs text-neutral-400 mb-4 flex items-center gap-1.5">
         <Zap size={14} className="text-teal-400" /> หากปิดการใช้งานเมนูใด
         ระบบจะทำการ **ซ่อนเมนูนานั้น** ออกจากหน้าของลูกค้าทันที
       </p>
-      {CATEGORY_ORDER.map((cat) => {
+      {categories.map((cat) => {
         const meta = CATEGORY_META[cat];
         const Icon = meta.icon;
         const items = menu.filter((m) => m.category === cat);
@@ -1846,13 +1952,20 @@ function MenuEditor({
   menu: MenuItem[];
   setEditingItem: (item: MenuItem) => void;
 }) {
+  const categories: CategoryType[] = [
+    'ICED COFFEE',
+    'HOT COFFEE',
+    'MATCHA & TEA',
+    'OTHERS',
+  ];
+
   return (
     <div className="mt-6">
       <p className="text-xs text-neutral-400 mb-4 flex items-center gap-1.5">
         <Pencil size={14} className="text-teal-400" /> คลิกที่เมนูเพื่อแก้ไขราคา
         หรือชื่อเมนูภาษาไทย/อังกฤษ
       </p>
-      {CATEGORY_ORDER.map((cat) => {
+      {categories.map((cat) => {
         const meta = CATEGORY_META[cat];
         const Icon = meta.icon;
         const items = menu.filter((m) => m.category === cat);
