@@ -103,7 +103,6 @@ interface CategoryMetaItem {
   label: string;
   labelTh: string;
   theme: ThemeType;
-  desc: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -341,28 +340,24 @@ const CATEGORY_META: Record<CategoryType, CategoryMetaItem> = {
     label: 'Iced Coffee',
     labelTh: 'กาแฟเย็น',
     theme: 'blue',
-    desc: 'เมนูกาแฟสกัดสด เสิร์ฟพร้อมน้ำแข็งเพิ่มความสดชื่น',
   },
   'HOT COFFEE': {
     icon: Flame,
     label: 'Hot Coffee',
     labelTh: 'กาแฟร้อน',
     theme: 'brown',
-    desc: 'รสชาติเข้มข้น หอมกรุ่นกาแฟคั่วบดใหม่ๆ',
   },
   'MATCHA & TEA': {
     icon: Leaf,
     label: 'Matcha & Tea',
     labelTh: 'มัทฉะ & ชา',
     theme: 'green',
-    desc: 'มัทฉะเกรดพรีเมียม ชาผลไม้ และโกโก้รสเข้ม',
   },
   OTHERS: {
     icon: Coffee,
     label: 'Others',
     labelTh: 'อื่นๆ',
     theme: 'gray',
-    desc: 'ส่วนเพิ่มเติมอื่นๆ',
   },
 };
 
@@ -867,22 +862,27 @@ function CustomerView({
   shopMessage,
 }: CustomerViewProps) {
   const [isCartOpen, setIsCartOpen] = useState(false);
-  // State เพิ่มใหม่สำหรับเก็บ Icon Group ที่ถูกเลือก
-  const [selectedCategory, setSelectedCategory] = useState<CategoryType | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType | null>(
+    null
+  );
 
   const cartTotal = cart.reduce((sum, item) => sum + item.total, 0);
   const totalCartItems = cart.reduce((sum, i) => sum + i.qty, 0);
 
-  // คำนวณเมนูที่จะแสดงเมื่อเลือกหมวดหมู่
   const visibleItems = useMemo(() => {
     if (!selectedCategory) return [];
-    
-    // ดึงเมนูเฉพาะของหมวดหมู่นั้นๆ
-    const catItems = menu.filter((m) => m.category === selectedCategory && m.available);
-    
-    // ถ้าเลือกหมวด กาแฟเย็น หรือ กาแฟร้อน ให้นำเมนู Extra shot (OTHERS) มารวมแสดงต่อท้ายด้วย
-    if (selectedCategory === 'ICED COFFEE' || selectedCategory === 'HOT COFFEE') {
-      const extraShots = menu.filter((m) => m.category === 'OTHERS' && m.available);
+
+    const catItems = menu.filter(
+      (m) => m.category === selectedCategory && m.available
+    );
+
+    if (
+      selectedCategory === 'ICED COFFEE' ||
+      selectedCategory === 'HOT COFFEE'
+    ) {
+      const extraShots = menu.filter(
+        (m) => m.category === 'OTHERS' && m.available
+      );
       return [...catItems, ...extraShots];
     }
 
@@ -965,7 +965,7 @@ function CustomerView({
           !shopOpen ? 'opacity-60 pointer-events-none' : ''
         }`}
       >
-        {/* แสดงผล Icon Groups 3 หมวดหมู่ใหญ่เมื่อยังไม่ได้เลือกกลุ่ม */}
+        {/* แสดงผล Icon Groups (ตัดคำบรรยายออก เหลือเฉพาะชื่อไทย-อังกฤษ) */}
         {!selectedCategory ? (
           <div>
             <h2 className="text-base font-bold text-neutral-300 mb-4">
@@ -985,18 +985,18 @@ function CustomerView({
                       <div className="p-3.5 rounded-2xl bg-amber-400/10 text-amber-400 group-hover:scale-110 transition-transform">
                         <Icon size={32} />
                       </div>
-                      <ChevronRight className="text-neutral-500 group-hover:text-amber-400 transition-colors" size={24} />
+                      <ChevronRight
+                        className="text-neutral-500 group-hover:text-amber-400 transition-colors"
+                        size={24}
+                      />
                     </div>
 
-                    <div className="mt-8">
+                    <div className="mt-6">
                       <h3 className="text-xl font-black text-white tracking-wide">
                         {meta.labelTh}
                       </h3>
                       <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest mt-0.5">
                         {meta.label}
-                      </p>
-                      <p className="text-xs text-neutral-400 mt-2 font-normal">
-                        {meta.desc}
                       </p>
                     </div>
                   </button>
@@ -1005,7 +1005,7 @@ function CustomerView({
             </div>
           </div>
         ) : (
-          /* Render รายการเมนูเมื่อทำการกดเลือก Group Icon แล้ว */
+          /* Render รายการเมนูเมื่อกดเลือก Group Icon */
           <div>
             <div className="flex items-center justify-between mb-6">
               <button
