@@ -204,7 +204,6 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     theme: 'blue',
     price: 55,
   },
-
   {
     id: 'hc01',
     name: 'Hot Americano',
@@ -261,7 +260,6 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     theme: 'brown',
     price: 45,
   },
-
   {
     id: 'mt01',
     name: 'Iced Matcha Latte',
@@ -318,7 +316,6 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
     theme: 'green',
     price: 50,
   },
-
   {
     id: 'co02',
     name: 'Extra shot',
@@ -507,7 +504,7 @@ function useOrderSound(enabled: boolean) {
 
 export default function App() {
   const [view, setView] = useState<'customer' | 'barista'>(getViewFromURL);
-  const [menu, setMenu] = useState<MenuItem[]>(
+  const [menu, setMenu] = useState<MenuItem[]>(() =>
     INITIAL_MENU_ITEMS.map((m) => ({ ...m, available: true }))
   );
   const [customerName, setCustomerName] = useState<string>('');
@@ -666,7 +663,7 @@ export default function App() {
     const newCartItem: CartItem = {
       cartId: `${modalItem.id}-${Date.now()}-${Math.random()
         .toString(36)
-        .substr(2, 4)}`,
+        .substring(2, 6)}`,
       itemId: modalItem.id,
       name: modalItem.name,
       nameTh: modalItem.nameTh,
@@ -712,11 +709,17 @@ export default function App() {
       return;
     }
     if (cart.length === 0) return;
-    const name = customerName.trim() || 'Guest';
+
+    const trimmedName = customerName.trim();
+    if (!trimmedName) {
+      setToast('กรุณาระบุชื่อของคุณก่อนส่งออเดอร์');
+      return;
+    }
+
     const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
 
     const newOrderData = {
-      customerName: name,
+      customerName: trimmedName,
       items: cart,
       total: totalAmount,
       createdAt: Date.now(),
@@ -727,7 +730,7 @@ export default function App() {
     const newOrderRef = push(ordersRef);
     set(newOrderRef, newOrderData);
 
-    setToast(`ส่งออเดอร์เรียบร้อยแล้วสำหรับคุณ ${name}`);
+    setToast(`ส่งออเดอร์เรียบร้อยแล้วสำหรับคุณ ${trimmedName}`);
     setCart([]);
     sound.playSent();
   }
@@ -814,7 +817,7 @@ export default function App() {
       )}
 
       {toast && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] px-4 py-3 rounded-2xl bg-[#0D1117] border border-emerald-400/50 shadow-[0_0_30px_-5px_rgba(16,185,129,0.5)] flex items-center gap-2 text-sm font-semibold">
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] px-4 py-3 rounded-2xl bg-[#0D1117] border border-emerald-400/50 shadow-[0_0_30px_-5px_rgba(16,185,129,0.5)] flex items-center gap-2 text-sm font-semibold animate-bounce">
           <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
           <span>{toast}</span>
         </div>
@@ -1286,8 +1289,11 @@ function BaristaView({
 }: BaristaViewProps) {
   const [clock, setClock] = useState<Date>(new Date());
   const [historyFilter, setHistoryFilter] = useState<
-    'today' | '3days' | '7days' | 'all'
+    'today' | 'yesterday' | 'custom' | 'all'
   >('today');
+  const [selectedDate, setSelectedDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
   const [tempMsg, setTempMsg] = useState<string>(shopMessage);
 
   useEffect(() => {
@@ -1418,6 +1424,8 @@ function BaristaView({
           now={now}
           historyFilter={historyFilter}
           setHistoryFilter={setHistoryFilter}
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
         />
       )}
       {baristaTab === 'stock' && (
@@ -1444,7 +1452,7 @@ function StatChip({
   color,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   color: string;
 }) {
   return (
@@ -1466,31 +1474,62 @@ function OrdersFeed({
   now,
   historyFilter,
   setHistoryFilter,
+  selectedDate,
+  setSelectedDate,
 }: {
   activeOrders: Order[];
   allOrders: Order[];
   advanceOrder: (id: string, status: OrderStatus) => void;
   now: number;
-  historyFilter: 'today' | '3days' | '7days' | 'all';
-  setHistoryFilter: (filter: 'today' | '3days' | '7days' | 'all') => void;
+  historyFilter: 'today' | 'yesterday' | 'custom' | 'all';
+  setHistoryFilter: (filter: 'today' | 'yesterday' | 'custom' | 'all') => void;
+  selectedDate: string;
+  setSelectedDate: (date: string) => void;
 }) {
   const filteredHistory = useMemo(() => {
-    const oneDayMs = 24 * 60 * 60 * 1000;
+    if (historyFilter === 'all') {
+      return allOrders.filter((o) => o.status !== 'pending');
+    }
+
+    const nowDate = new Date(now);
+    const startOfToday = new Date(
+      nowDate.getFullYear(),
+      nowDate.getMonth(),
+      nowDate.getDate()
+    ).getTime();
+    const endOfToday = startOfToday + 24 * 60 * 60 * 1000 - 1;
+
+    let startTime = startOfToday;
+    let endTime = endOfToday;
+
+    if (historyFilter === 'yesterday') {
+      startTime = startOfToday - 24 * 60 * 60 * 1000;
+      endTime = startOfToday - 1;
+    } else if (historyFilter === 'custom') {
+      if (!selectedDate) return [];
+      const [year, month, day] = selectedDate.split('-').map(Number);
+      const customStart = new Date(year, month - 1, day).getTime();
+      startTime = customStart;
+      endTime = customStart + 24 * 60 * 60 * 1000 - 1;
+    }
+
     return allOrders.filter((o) => {
       if (o.status === 'pending') return false;
-      const ageMs = now - o.createdAt;
-      if (historyFilter === 'today') return ageMs <= oneDayMs;
-      if (historyFilter === '3days') return ageMs <= 3 * oneDayMs;
-      if (historyFilter === '7days') return ageMs <= 7 * oneDayMs;
-      return true;
+      return o.createdAt >= startTime && o.createdAt <= endTime;
     });
-  }, [allOrders, now, historyFilter]);
+  }, [allOrders, now, historyFilter, selectedDate]);
 
   const pendingCount = activeOrders.length;
-  const doneCount = filteredHistory.filter((o) => o.status === 'done').length;
+  const doneOrders = filteredHistory.filter((o) => o.status === 'done');
+  const doneCount = doneOrders.length;
   const cancelCount = filteredHistory.filter(
     (o) => o.status === 'cancelled'
   ).length;
+
+  const totalRevenue = useMemo(
+    () => doneOrders.reduce((sum, o) => sum + o.total, 0),
+    [doneOrders]
+  );
 
   return (
     <div className="mt-6">
@@ -1511,52 +1550,66 @@ function OrdersFeed({
             value={cancelCount}
             color="text-rose-400"
           />
+          <StatChip
+            label="Revenue / ยอดขาย"
+            value={`฿${totalRevenue}`}
+            color="text-teal-300"
+          />
         </div>
 
-        <div className="flex items-center gap-1.5 bg-white/[0.04] p-1 rounded-xl border border-white/10 text-xs">
-          <span className="text-neutral-400 px-2 flex items-center gap-1">
-            <Calendar size={13} /> ดูประวัติ:
+        <div className="flex flex-wrap items-center gap-1.5 bg-white/[0.04] p-1.5 rounded-xl border border-white/10 text-xs">
+          <span className="text-neutral-400 px-2 flex items-center gap-1 font-semibold">
+            <Calendar size={13} className="text-amber-400" /> ตัวกรองประวัติ:
           </span>
           <button
             onClick={() => setHistoryFilter('today')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
               historyFilter === 'today'
-                ? 'bg-amber-400 text-black font-bold'
+                ? 'bg-amber-400 text-black shadow-md'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
             วันนี้
           </button>
           <button
-            onClick={() => setHistoryFilter('3days')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-              historyFilter === '3days'
-                ? 'bg-amber-400 text-black font-bold'
+            onClick={() => setHistoryFilter('yesterday')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+              historyFilter === 'yesterday'
+                ? 'bg-amber-400 text-black shadow-md'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            3 วันล่าสุด
+            เมื่อวาน
           </button>
           <button
-            onClick={() => setHistoryFilter('7days')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-              historyFilter === '7days'
-                ? 'bg-amber-400 text-black font-bold'
+            onClick={() => setHistoryFilter('custom')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+              historyFilter === 'custom'
+                ? 'bg-amber-400 text-black shadow-md'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            7 วันล่าสุด
+            เลือกวันเอง
           </button>
           <button
             onClick={() => setHistoryFilter('all')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
               historyFilter === 'all'
-                ? 'bg-amber-400 text-black font-bold'
+                ? 'bg-amber-400 text-black shadow-md'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
             ทั้งหมด
           </button>
+
+          {historyFilter === 'custom' && (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="ml-1 bg-white/[0.06] border border-amber-400/40 text-amber-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
+            />
+          )}
         </div>
       </div>
 
