@@ -110,7 +110,7 @@ interface CategoryMetaItem {
 const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   {
     id: 'ic01',
-    name: 'Ice Americano',
+    name: 'Iced Americano',
     nameTh: 'อเมริกาโน่เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
@@ -118,7 +118,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
   {
     id: 'ic02',
-    name: 'Ice Espresso',
+    name: 'Iced Espresso',
     nameTh: 'เอสเพรสโซ่เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
@@ -126,7 +126,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
   {
     id: 'ic03',
-    name: 'Ice Americano Honey',
+    name: 'Iced Americano Honey',
     nameTh: 'อเมริกาโน่น้ำผึ้งเย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
@@ -134,7 +134,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
   {
     id: 'ic04',
-    name: 'Ice Americano Orange',
+    name: 'Iced Americano Orange',
     nameTh: 'อเมริกาโน่ส้มเย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
@@ -150,7 +150,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
   {
     id: 'ic06',
-    name: 'Ice Americano Honey Orange',
+    name: 'Iced Americano Honey Orange',
     nameTh: 'อเมริกาโน่น้ำผึ้งส้ม',
     category: 'ICED COFFEE',
     theme: 'blue',
@@ -166,7 +166,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
   {
     id: 'ic08',
-    name: 'Ice Cappucino',
+    name: 'Iced Cappucino',
     nameTh: 'คาปูชิโน่เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
@@ -174,7 +174,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
   {
     id: 'ic09',
-    name: 'Ice Mocha',
+    name: 'Iced Mocha',
     nameTh: 'มอคค่าเย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
@@ -182,7 +182,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
   {
     id: 'ic10',
-    name: 'Ice Latte',
+    name: 'Iced Latte',
     nameTh: 'ลาเต้เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
@@ -198,7 +198,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
   {
     id: 'ic12',
-    name: 'Ice Caramel Macchiato',
+    name: 'Iced Caramel Macchiato',
     nameTh: 'คาราเมลมัคคิอาโต้เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
@@ -270,7 +270,7 @@ const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
   },
   {
     id: 'mt02',
-    name: 'Ice Matcha Coffee',
+    name: 'Iced Matcha Coffee',
     nameTh: 'มัทฉะกาแฟ',
     category: 'MATCHA & TEA',
     theme: 'green',
