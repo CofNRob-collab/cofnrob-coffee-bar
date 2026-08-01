@@ -42,6 +42,7 @@ import {
   ToggleRight,
   Zap,
   MinusCircle,
+  PlusCircle,
   Search,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -1656,7 +1657,7 @@ function BaristaView({
           <ListChecks size={15} /> Live Orders & History
         </button>
 
-        {/* ปุ่มระบบแลก/ตัดคะแนนสะสม */}
+        {/* ปุ่มระบบจัดการแต้มสะสม */}
         <button
           onClick={() => setBaristaTab('points')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
@@ -1665,7 +1666,7 @@ function BaristaView({
               : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
-          <MinusCircle size={15} /> แลก / ตัดคะแนนสะสม (Redeem)
+          <Award size={15} /> จัดการแต้มสะสม (Add / Redeem Points)
         </button>
 
         <button
@@ -1733,6 +1734,7 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
   const [searchPhone, setSearchPhone] = useState<string>('');
   const [member, setMember] = useState<MemberData | null>(null);
   const [pointsToDeduct, setPointsToDeduct] = useState<number>(10);
+  const [pointsToAdd, setPointsToAdd] = useState<number>(10);
   const [isSearching, setIsSearching] = useState<boolean>(false);
 
   async function handleSearch() {
@@ -1751,6 +1753,27 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
       setToast(`ยังไม่มีข้อมูลสมาชิก #${code} (เริ่มต้น 0 คะแนน)`);
     }
     setIsSearching(false);
+  }
+
+  async function handleAddPoints() {
+    if (!member) return;
+    if (pointsToAdd <= 0) {
+      setToast('กรุณาระบุจำนวนคะแนนที่ต้องการเพิ่มให้ถูกต้อง');
+      return;
+    }
+
+    const newPoints = member.points + pointsToAdd;
+    const memberRef = ref(db, `members/${member.phone4}`);
+    await set(memberRef, {
+      phone4: member.phone4,
+      points: newPoints,
+      updatedAt: Date.now(),
+    });
+
+    setMember({ ...member, points: newPoints, updatedAt: Date.now() });
+    setToast(
+      `เพิ่มคะแนนให้สมาชิก #${member.phone4} จำนวน +${pointsToAdd} คะแนนเรียบร้อยแล้ว`
+    );
   }
 
   async function handleDeductPoints() {
@@ -1784,10 +1807,11 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
     <div className="mt-6 max-w-xl">
       <div className="p-6 rounded-3xl bg-[#0D1117] border border-amber-400/30 shadow-xl">
         <h2 className="text-lg font-black text-amber-400 flex items-center gap-2 mb-1">
-          <Award size={20} /> ระบบตัด/แลกคะแนนสะสม (Redeem Points)
+          <Award size={20} /> ระบบจัดการแต้มสะสมสมาชิก (Manage Points)
         </h2>
         <p className="text-xs text-neutral-400 mb-6">
-          สำหรับบาริสต้าใช้ตัดคะแนนสมาชิกเมื่อลูกค้านำแต้มมาแลกส่วนลดหรือเครื่องดื่มฟรี
+          สำหรับบาริสต้าใช้เพิ่มแต้มอิสระ
+          หรือตัดคะแนนสะสมเมื่อลูกค้านำแต้มมาแลกส่วนลด
         </p>
 
         {/* ค้นหาสมาชิก */}
@@ -1824,9 +1848,9 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
           </div>
         </div>
 
-        {/* ผลลัพธ์และฟอร์มตัดแต้ม */}
+        {/* ผลลัพธ์และฟอร์มจัดการแต้ม */}
         {member && (
-          <div className="pt-5 border-t border-white/10 space-y-5 animate-fadeIn">
+          <div className="pt-5 border-t border-white/10 space-y-6 animate-fadeIn">
             <div className="p-4 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-between">
               <div>
                 <span className="text-xs text-neutral-400 block font-semibold">
@@ -1849,9 +1873,49 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
               </div>
             </div>
 
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-neutral-300 block">
-                ระบุจำนวนคะแนนที่ต้องการหัก / แลก
+            {/* ส่วนเพิ่มแต้มอิสระ (+Points) */}
+            <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-3">
+              <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                <PlusCircle size={15} /> บวกแต้มสะสมเพิ่ม (Add Points)
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  value={pointsToAdd}
+                  onChange={(e) =>
+                    setPointsToAdd(Math.max(1, Number(e.target.value)))
+                  }
+                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-base font-mono font-bold text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+                <span className="text-xs text-neutral-400">คะแนน</span>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {[10, 20, 50, 100].map((pts) => (
+                  <button
+                    key={pts}
+                    onClick={() => setPointsToAdd(pts)}
+                    className="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300"
+                  >
+                    +{pts} แต้ม
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={handleAddPoints}
+                className="w-full py-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-[0.98]"
+              >
+                <PlusCircle size={16} /> ยืนยันการเพิ่มคะแนน (+{pointsToAdd}{' '}
+                แต้ม)
+              </button>
+            </div>
+
+            {/* ส่วนหัก/ตัดแต้ม (-Points) */}
+            <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 space-y-3">
+              <label className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                <MinusCircle size={15} /> หัก / แลกคะแนนออก (Redeem Points)
               </label>
               <div className="flex items-center gap-3">
                 <input
@@ -1862,7 +1926,7 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
                   onChange={(e) =>
                     setPointsToDeduct(Math.max(1, Number(e.target.value)))
                   }
-                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-base font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-base font-mono font-bold text-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400"
                 />
                 <span className="text-xs text-neutral-400">คะแนน</span>
               </div>
@@ -1872,26 +1936,26 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
                   <button
                     key={pts}
                     onClick={() => setPointsToDeduct(pts)}
-                    className="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-white/[0.05] hover:bg-white/10 border border-white/10 text-amber-300"
+                    className="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300"
                   >
                     -{pts} แต้ม
                   </button>
                 ))}
               </div>
-            </div>
 
-            <button
-              onClick={handleDeductPoints}
-              disabled={member.points <= 0}
-              className={`w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all flex items-center justify-center gap-2 shadow-lg ${
-                member.points > 0
-                  ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_0_20px_rgba(244,63,94,0.4)] active:scale-[0.98]'
-                  : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
-              }`}
-            >
-              <MinusCircle size={18} /> ยืนยันการหัก/ตัดคะแนน (-{pointsToDeduct}{' '}
-              แต้ม)
-            </button>
+              <button
+                onClick={handleDeductPoints}
+                disabled={member.points <= 0}
+                className={`w-full py-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 ${
+                  member.points > 0
+                    ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]'
+                    : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                }`}
+              >
+                <MinusCircle size={16} /> ยืนยันการหัก/ตัดคะแนน (-
+                {pointsToDeduct} แต้ม)
+              </button>
+            </div>
           </div>
         )}
       </div>
