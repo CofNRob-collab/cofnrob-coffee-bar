@@ -7,6 +7,7 @@ import {
   set,
   update,
   onValue,
+  get,
 } from 'firebase/database';
 import {
   Coffee,
@@ -21,8 +22,6 @@ import {
   Minus,
   X,
   Radio,
-  ToggleRight,
-  Zap,
   ListChecks,
   Volume2,
   VolumeX,
@@ -37,6 +36,13 @@ import {
   EyeOff,
   ArrowLeft,
   ChevronRight,
+  Award,
+  History,
+  Phone,
+  ToggleRight,
+  Zap,
+  MinusCircle,
+  Search,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -92,10 +98,19 @@ interface CartItem {
 interface Order {
   id: string;
   customerName: string;
+  memberPhoneCode?: string;
+  earnedPoints?: number;
+  pointsProcessed?: boolean;
   items: CartItem[];
   total: number;
   createdAt: number;
   status: OrderStatus;
+}
+
+interface MemberData {
+  phone4: string;
+  points: number;
+  updatedAt: number;
 }
 
 interface CategoryMetaItem {
@@ -353,12 +368,7 @@ const CATEGORY_META: Record<CategoryType, CategoryMetaItem> = {
     labelTh: 'มัทฉะ & ชา',
     theme: 'green',
   },
-  OTHERS: {
-    icon: Coffee,
-    label: 'Others',
-    labelTh: 'อื่นๆ',
-    theme: 'gray',
-  },
+  OTHERS: { icon: Coffee, label: 'Others', labelTh: 'อื่นๆ', theme: 'gray' },
 };
 
 const BUTTON_THEME: Record<
@@ -513,15 +523,15 @@ export default function App() {
   const [menu, setMenu] = useState<MenuItem[]>(() =>
     INITIAL_MENU_ITEMS.map((m) => ({ ...m, available: true }))
   );
-  const [customerName, setCustomerName] = useState<string>('');
+  const [memberPhoneCode, setMemberPhoneCode] = useState<string>('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [modalItem, setModalItem] = useState<MenuItem | null>(null);
   const [sweetness, setSweetness] = useState<number>(100);
   const [qty, setQty] = useState<number>(1);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [baristaTab, setBaristaTab] = useState<'orders' | 'stock' | 'editor'>(
-    'orders'
-  );
+  const [baristaTab, setBaristaTab] = useState<
+    'orders' | 'points' | 'stock' | 'editor'
+  >('orders');
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState<number>(Date.now());
   const [soundOn, setSoundOn] = useState<boolean>(true);
@@ -609,6 +619,9 @@ export default function App() {
           return {
             id: key,
             customerName: itemData.customerName || 'Guest',
+            memberPhoneCode: itemData.memberPhoneCode || '',
+            earnedPoints: itemData.earnedPoints || 0,
+            pointsProcessed: itemData.pointsProcessed || false,
             items,
             total: itemData.total || items.reduce((s, i) => s + i.total, 0),
             createdAt: itemData.createdAt || Date.now(),
@@ -716,16 +729,20 @@ export default function App() {
     }
     if (cart.length === 0) return;
 
-    const trimmedName = customerName.trim();
-    if (!trimmedName) {
-      setToast('กรุณาระบุชื่อของคุณก่อนส่งออเดอร์');
+    const trimmedPhone = memberPhoneCode.trim();
+    if (!trimmedPhone || trimmedPhone.length !== 4) {
+      setToast('กรุณากรอกรหัสสมาชิก 4 ตัวท้ายให้ถูกต้องก่อนสั่งซื้อ');
       return;
     }
 
     const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
+    const earnedPoints = Math.floor(totalAmount / 10);
 
     const newOrderData = {
-      customerName: trimmedName,
+      customerName: `สมาชิก #${trimmedPhone}`,
+      memberPhoneCode: trimmedPhone,
+      earnedPoints: earnedPoints,
+      pointsProcessed: false,
       items: cart,
       total: totalAmount,
       createdAt: Date.now(),
@@ -736,15 +753,45 @@ export default function App() {
     const newOrderRef = push(ordersRef);
     set(newOrderRef, newOrderData);
 
-    setToast(`ส่งออเดอร์เรียบร้อยแล้วสำหรับคุณ ${trimmedName}`);
+    setToast(
+      `ส่งออเดอร์เรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้ากดรับ/ทำเสร็จ)`
+    );
     setCart([]);
     sound.playSent();
   }
 
-  function advanceOrder(id: string, status: OrderStatus) {
-    const orderRef = ref(db, `orders/${id}`);
-    update(orderRef, { status });
-    if (status === 'done') sound.playDone();
+  async function advanceOrder(id: string, status: OrderStatus) {
+    const targetOrder = orders.find((o) => o.id === id);
+    if (!targetOrder) return;
+
+    if (
+      status === 'done' &&
+      targetOrder.memberPhoneCode &&
+      !targetOrder.pointsProcessed
+    ) {
+      const phone4 = targetOrder.memberPhoneCode;
+      const pointsToAdd =
+        targetOrder.earnedPoints || Math.floor(targetOrder.total / 10);
+
+      const memberRef = ref(db, `members/${phone4}`);
+      const snapshot = await get(memberRef);
+      const currentPoints = snapshot.exists() ? snapshot.val().points || 0 : 0;
+
+      await set(memberRef, {
+        phone4,
+        points: currentPoints + pointsToAdd,
+        updatedAt: Date.now(),
+      });
+
+      const orderRef = ref(db, `orders/${id}`);
+      update(orderRef, { status: 'done', pointsProcessed: true });
+      sound.playDone();
+      setToast(`เพิ่ม ${pointsToAdd} แต้มให้สมาชิก #${phone4} เรียบร้อยแล้ว!`);
+    } else {
+      const orderRef = ref(db, `orders/${id}`);
+      update(orderRef, { status });
+      if (status === 'done') sound.playDone();
+    }
   }
 
   function toggleStock(id: string) {
@@ -775,8 +822,8 @@ export default function App() {
       {view === 'customer' ? (
         <CustomerView
           menu={menu}
-          customerName={customerName}
-          setCustomerName={setCustomerName}
+          memberPhoneCode={memberPhoneCode}
+          setMemberPhoneCode={setMemberPhoneCode}
           openModal={openModal}
           soundOn={soundOn}
           setSoundOn={setSoundOn}
@@ -786,6 +833,7 @@ export default function App() {
           submitCartOrder={submitCartOrder}
           shopOpen={shopOpen}
           shopMessage={shopMessage}
+          orders={orders}
         />
       ) : (
         <BaristaView
@@ -807,6 +855,7 @@ export default function App() {
           toggleShopStatus={toggleShopStatus}
           shopMessage={shopMessage}
           updateShopMessage={updateShopMessage}
+          setToast={setToast}
         />
       )}
 
@@ -834,8 +883,8 @@ export default function App() {
 
 interface CustomerViewProps {
   menu: MenuItem[];
-  customerName: string;
-  setCustomerName: (name: string) => void;
+  memberPhoneCode: string;
+  setMemberPhoneCode: (code: string) => void;
   openModal: (item: MenuItem) => void;
   soundOn: boolean;
   setSoundOn: (val: boolean) => void;
@@ -845,12 +894,13 @@ interface CustomerViewProps {
   submitCartOrder: () => void;
   shopOpen: boolean;
   shopMessage: string;
+  orders: Order[];
 }
 
 function CustomerView({
   menu,
-  customerName,
-  setCustomerName,
+  memberPhoneCode,
+  setMemberPhoneCode,
   openModal,
   soundOn,
   setSoundOn,
@@ -860,14 +910,39 @@ function CustomerView({
   submitCartOrder,
   shopOpen,
   shopMessage,
+  orders,
 }: CustomerViewProps) {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | null>(
     null
   );
+  const [memberInfo, setMemberInfo] = useState<MemberData | null>(null);
 
   const cartTotal = cart.reduce((sum, item) => sum + item.total, 0);
   const totalCartItems = cart.reduce((sum, i) => sum + i.qty, 0);
+
+  useEffect(() => {
+    const code = memberPhoneCode.trim();
+    if (code.length === 4) {
+      const memberRef = ref(db, `members/${code}`);
+      const unsubscribe = onValue(memberRef, (snapshot) => {
+        if (snapshot.exists()) {
+          setMemberInfo(snapshot.val());
+        } else {
+          setMemberInfo({ phone4: code, points: 0, updatedAt: Date.now() });
+        }
+      });
+      return () => unsubscribe();
+    } else {
+      setMemberInfo(null);
+    }
+  }, [memberPhoneCode]);
+
+  const memberHistory = useMemo(() => {
+    const code = memberPhoneCode.trim();
+    if (code.length !== 4) return [];
+    return orders.filter((o) => o.memberPhoneCode === code);
+  }, [orders, memberPhoneCode]);
 
   const visibleItems = useMemo(() => {
     if (!selectedCategory) return [];
@@ -899,24 +974,31 @@ function CustomerView({
               Cof N&apos; Rob <span className="text-amber-400">Coffee Bar</span>
             </h1>
             <p className="text-xs text-neutral-400 mt-1">
-              เลือกสั่งเมนูเครื่องดื่มที่คุณชื่นชอบ
+              สะสมแต้มง่ายๆ: ซื้อครบทุก 10 บาท = 1 คะแนน
             </p>
+
             <div className="mt-3 max-w-xs">
               <div className="relative">
-                <User
+                <Phone
                   size={15}
                   className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400"
                 />
                 <input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="ระบุชื่อสำหรับเรียกคิว..."
-                  maxLength={40}
-                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-semibold text-white placeholder:text-neutral-500 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  type="text"
+                  inputMode="numeric"
+                  value={memberPhoneCode}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    if (val.length <= 4) setMemberPhoneCode(val);
+                  }}
+                  placeholder="กรอกเบอร์โทร 4 ตัวท้าย..."
+                  maxLength={4}
+                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-mono font-bold text-amber-300 placeholder:text-neutral-500 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
               </div>
             </div>
           </div>
+
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsCartOpen(true)}
@@ -942,6 +1024,36 @@ function CustomerView({
             </button>
           </div>
         </div>
+
+        {memberPhoneCode.trim().length === 4 && (
+          <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-400/30 flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-400/20 text-amber-400">
+                <Award size={24} />
+              </div>
+              <div>
+                <span className="text-xs text-neutral-400 font-semibold block">
+                  สมาชิกเบอร์ท้าย #{memberPhoneCode}
+                </span>
+                <span className="text-lg font-black text-amber-400 font-mono">
+                  {memberInfo ? memberInfo.points : 0}{' '}
+                  <span className="text-xs font-normal text-amber-200">
+                    คะแนนสะสม
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <span className="text-[11px] text-neutral-400 block flex items-center gap-1 justify-end">
+                <History size={12} /> เคยสั่งซื้อทั้งหมด
+              </span>
+              <span className="text-xs font-bold text-white font-mono">
+                {memberHistory.length} ออเดอร์
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {!shopOpen && (
@@ -965,7 +1077,6 @@ function CustomerView({
           !shopOpen ? 'opacity-60 pointer-events-none' : ''
         }`}
       >
-        {/* แสดงผล Icon Groups (ตัดคำบรรยายออก เหลือเฉพาะชื่อไทย-อังกฤษ) */}
         {!selectedCategory ? (
           <div>
             <h2 className="text-base font-bold text-neutral-300 mb-4">
@@ -1005,14 +1116,13 @@ function CustomerView({
             </div>
           </div>
         ) : (
-          /* Render รายการเมนูเมื่อกดเลือก Group Icon */
           <div>
             <div className="flex items-center justify-between mb-6">
               <button
                 onClick={() => setSelectedCategory(null)}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 hover:bg-white/[0.1] text-amber-400 text-xs font-bold transition-all"
               >
-                <ArrowLeft size={16} /> กลับไปเลือกหมวดหมู่ (Back to Categories)
+                <ArrowLeft size={16} /> กลับไปเลือกหมวดหมู่
               </button>
 
               <div className="flex items-center gap-2">
@@ -1064,6 +1174,50 @@ function CustomerView({
                   item={item}
                   onClick={() => openModal(item)}
                 />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {memberHistory.length > 0 && (
+          <div className="mt-10 pt-6 border-t border-white/10">
+            <h3 className="text-sm font-bold text-amber-400 mb-3 flex items-center gap-2">
+              <History size={16} /> ประวัติการสั่งซื้อย้อนหลังของคุณ (เบอร์ท้าย
+              #{memberPhoneCode})
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
+              {memberHistory.slice(0, 5).map((o) => (
+                <div
+                  key={o.id}
+                  className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 text-xs"
+                >
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-neutral-400">
+                      {fmtDate(o.createdAt)}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        o.status === 'done'
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : o.status === 'cancelled'
+                          ? 'bg-rose-500/20 text-rose-300'
+                          : 'bg-amber-500/20 text-amber-300'
+                      }`}
+                    >
+                      {o.status === 'done'
+                        ? 'เสร็จสิ้น (+สะสมแต้มแล้ว)'
+                        : o.status === 'cancelled'
+                        ? 'ยกเลิก'
+                        : 'รอดำเนินการ'}
+                    </span>
+                  </div>
+                  <p className="text-white font-semibold truncate">
+                    {o.items.map((i) => `${i.name} x${i.qty}`).join(', ')}
+                  </p>
+                  <p className="text-amber-400 font-mono font-bold mt-1">
+                    ฿{o.total}
+                  </p>
+                </div>
               ))}
             </div>
           </div>
@@ -1162,13 +1316,18 @@ function CustomerView({
 
             {cart.length > 0 && (
               <div className="pt-4 border-t border-white/10 mt-auto">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-400">
                     ราคารวมทั้งหมด
                   </span>
                   <span className="text-2xl font-mono font-black text-amber-400">
                     ฿{cartTotal}
                   </span>
+                </div>
+
+                <div className="mb-4 text-xs text-emerald-400 font-semibold flex items-center gap-1">
+                  <Award size={14} /> จะได้รับคะแนนสะสม: +
+                  {Math.floor(cartTotal / 10)} คะแนน
                 </div>
 
                 <button
@@ -1348,8 +1507,8 @@ function CustomizeModal({
 interface BaristaViewProps {
   menu: MenuItem[];
   toggleStock: (id: string) => void;
-  baristaTab: 'orders' | 'stock' | 'editor';
-  setBaristaTab: (tab: 'orders' | 'stock' | 'editor') => void;
+  baristaTab: 'orders' | 'points' | 'stock' | 'editor';
+  setBaristaTab: (tab: 'orders' | 'points' | 'stock' | 'editor') => void;
   activeOrders: Order[];
   allOrders: Order[];
   advanceOrder: (id: string, status: OrderStatus) => void;
@@ -1364,6 +1523,7 @@ interface BaristaViewProps {
   toggleShopStatus: () => void;
   shopMessage: string;
   updateShopMessage: (msg: string) => void;
+  setToast: (msg: string) => void;
 }
 
 function BaristaView({
@@ -1385,6 +1545,7 @@ function BaristaView({
   toggleShopStatus,
   shopMessage,
   updateShopMessage,
+  setToast,
 }: BaristaViewProps) {
   const [clock, setClock] = useState<Date>(new Date());
   const [historyFilter, setHistoryFilter] = useState<
@@ -1482,7 +1643,8 @@ function BaristaView({
         </div>
       </div>
 
-      <div className="flex items-center gap-1 p-1 mt-5 rounded-xl bg-white/[0.04] border border-white/10 w-fit">
+      {/* Barista Nav Tabs */}
+      <div className="flex flex-wrap items-center gap-1 p-1 mt-5 rounded-xl bg-white/[0.04] border border-white/10 w-fit">
         <button
           onClick={() => setBaristaTab('orders')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
@@ -1493,6 +1655,19 @@ function BaristaView({
         >
           <ListChecks size={15} /> Live Orders & History
         </button>
+
+        {/* ปุ่มระบบแลก/ตัดคะแนนสะสม */}
+        <button
+          onClick={() => setBaristaTab('points')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+            baristaTab === 'points'
+              ? 'bg-amber-400 text-black'
+              : 'text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <MinusCircle size={15} /> แลก / ตัดคะแนนสะสม (Redeem)
+        </button>
+
         <button
           onClick={() => setBaristaTab('stock')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
@@ -1503,6 +1678,7 @@ function BaristaView({
         >
           <Settings2 size={15} /> Hide / Show Menu
         </button>
+
         <button
           onClick={() => setBaristaTab('editor')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
@@ -1527,9 +1703,13 @@ function BaristaView({
           setSelectedDate={setSelectedDate}
         />
       )}
+
+      {baristaTab === 'points' && <PointsManager setToast={setToast} />}
+
       {baristaTab === 'stock' && (
         <StockControl menu={menu} toggleStock={toggleStock} />
       )}
+
       {baristaTab === 'editor' && (
         <MenuEditor menu={menu} setEditingItem={setEditingItem} />
       )}
@@ -1541,6 +1721,180 @@ function BaristaView({
           onSave={updateMenuItem}
         />
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  BARISTA POINTS MANAGER COMPONENT                                 */
+/* ------------------------------------------------------------------ */
+
+function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
+  const [searchPhone, setSearchPhone] = useState<string>('');
+  const [member, setMember] = useState<MemberData | null>(null);
+  const [pointsToDeduct, setPointsToDeduct] = useState<number>(10);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+
+  async function handleSearch() {
+    const code = searchPhone.trim();
+    if (code.length !== 4) {
+      setToast('กรุณากรอกรหัสสมาชิก 4 ตัวท้ายให้ครบถ้วน');
+      return;
+    }
+    setIsSearching(true);
+    const memberRef = ref(db, `members/${code}`);
+    const snapshot = await get(memberRef);
+    if (snapshot.exists()) {
+      setMember(snapshot.val());
+    } else {
+      setMember({ phone4: code, points: 0, updatedAt: Date.now() });
+      setToast(`ยังไม่มีข้อมูลสมาชิก #${code} (เริ่มต้น 0 คะแนน)`);
+    }
+    setIsSearching(false);
+  }
+
+  async function handleDeductPoints() {
+    if (!member) return;
+    if (pointsToDeduct <= 0) {
+      setToast('กรุณาระบุจำนวนคะแนนที่ต้องการหักให้ถูกต้อง');
+      return;
+    }
+    if (member.points < pointsToDeduct) {
+      setToast(
+        `คะแนนไม่พอ! สมาชิกมีเพียง ${member.points} คะแนน แต่ต้องการตัด ${pointsToDeduct} คะแนน`
+      );
+      return;
+    }
+
+    const newPoints = member.points - pointsToDeduct;
+    const memberRef = ref(db, `members/${member.phone4}`);
+    await set(memberRef, {
+      phone4: member.phone4,
+      points: newPoints,
+      updatedAt: Date.now(),
+    });
+
+    setMember({ ...member, points: newPoints, updatedAt: Date.now() });
+    setToast(
+      `ตัดคะแนนสมาชิก #${member.phone4} จำนวน -${pointsToDeduct} คะแนนเรียบร้อยแล้ว`
+    );
+  }
+
+  return (
+    <div className="mt-6 max-w-xl">
+      <div className="p-6 rounded-3xl bg-[#0D1117] border border-amber-400/30 shadow-xl">
+        <h2 className="text-lg font-black text-amber-400 flex items-center gap-2 mb-1">
+          <Award size={20} /> ระบบตัด/แลกคะแนนสะสม (Redeem Points)
+        </h2>
+        <p className="text-xs text-neutral-400 mb-6">
+          สำหรับบาริสต้าใช้ตัดคะแนนสมาชิกเมื่อลูกค้านำแต้มมาแลกส่วนลดหรือเครื่องดื่มฟรี
+        </p>
+
+        {/* ค้นหาสมาชิก */}
+        <div className="space-y-2 mb-6">
+          <label className="text-xs font-bold text-neutral-300 block">
+            ค้นหารหัสสมาชิก (เบอร์โทร 4 ตัวท้าย)
+          </label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Phone
+                size={16}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500"
+              />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={searchPhone}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  if (val.length <= 4) setSearchPhone(val);
+                }}
+                maxLength={4}
+                placeholder="เช่น 1234"
+                className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-sm font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+            <button
+              onClick={handleSearch}
+              disabled={isSearching}
+              className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-black text-xs font-extrabold rounded-xl transition-all flex items-center gap-1.5 shrink-0"
+            >
+              <Search size={15} /> ค้นหา
+            </button>
+          </div>
+        </div>
+
+        {/* ผลลัพธ์และฟอร์มตัดแต้ม */}
+        {member && (
+          <div className="pt-5 border-t border-white/10 space-y-5 animate-fadeIn">
+            <div className="p-4 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-between">
+              <div>
+                <span className="text-xs text-neutral-400 block font-semibold">
+                  สมาชิกหมายเลข
+                </span>
+                <span className="text-lg font-black text-white font-mono">
+                  #{member.phone4}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-amber-300/80 block font-semibold">
+                  คะแนนสะสมคงเหลือ
+                </span>
+                <span className="text-2xl font-black text-amber-400 font-mono">
+                  {member.points}{' '}
+                  <span className="text-xs font-normal text-amber-200">
+                    แต้ม
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-neutral-300 block">
+                ระบุจำนวนคะแนนที่ต้องการหัก / แลก
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  max={member.points}
+                  value={pointsToDeduct}
+                  onChange={(e) =>
+                    setPointsToDeduct(Math.max(1, Number(e.target.value)))
+                  }
+                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-base font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                />
+                <span className="text-xs text-neutral-400">คะแนน</span>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {[10, 20, 50, 100].map((pts) => (
+                  <button
+                    key={pts}
+                    onClick={() => setPointsToDeduct(pts)}
+                    className="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-white/[0.05] hover:bg-white/10 border border-white/10 text-amber-300"
+                  >
+                    -{pts} แต้ม
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={handleDeductPoints}
+              disabled={member.points <= 0}
+              className={`w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all flex items-center justify-center gap-2 shadow-lg ${
+                member.points > 0
+                  ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_0_20px_rgba(244,63,94,0.4)] active:scale-[0.98]'
+                  : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+              }`}
+            >
+              <MinusCircle size={18} /> ยืนยันการหัก/ตัดคะแนน (-{pointsToDeduct}{' '}
+              แต้ม)
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1803,6 +2157,12 @@ function OrderCard({
               {order.customerName}
             </span>
           </div>
+          {order.memberPhoneCode && (
+            <span className="inline-block mt-1 text-[10px] font-mono font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+              สมาชิก #{order.memberPhoneCode} (+
+              {order.earnedPoints || Math.floor(order.total / 10)} แต้ม)
+            </span>
+          )}
         </div>
         <span
           className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${statusMeta.cls}`}
@@ -1855,7 +2215,7 @@ function OrderCard({
             onClick={() => advanceOrder(order.id, 'done')}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 text-xs font-bold hover:bg-emerald-500/25 transition-colors"
           >
-            <CheckCircle2 size={14} /> Done / เสร็จสิ้น
+            <CheckCircle2 size={14} /> Done & เพิ่มแต้ม
           </button>
         </div>
       )}
