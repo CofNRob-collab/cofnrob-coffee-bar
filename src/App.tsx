@@ -44,6 +44,7 @@ import {
   MinusCircle,
   PlusCircle,
   Search,
+  Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -737,7 +738,7 @@ export default function App() {
     }
 
     const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
-    const earnedPoints = Math.floor(totalAmount / 10);
+    const earnedPoints = totalAmount / 10;
 
     const newOrderData = {
       customerName: `สมาชิก #${trimmedPhone}`,
@@ -771,8 +772,7 @@ export default function App() {
       !targetOrder.pointsProcessed
     ) {
       const phone4 = targetOrder.memberPhoneCode;
-      const pointsToAdd =
-        targetOrder.earnedPoints || Math.floor(targetOrder.total / 10);
+      const pointsToAdd = targetOrder.earnedPoints || targetOrder.total / 10;
 
       const memberRef = ref(db, `members/${phone4}`);
       const snapshot = await get(memberRef);
@@ -922,6 +922,11 @@ function CustomerView({
   const cartTotal = cart.reduce((sum, item) => sum + item.total, 0);
   const totalCartItems = cart.reduce((sum, i) => sum + i.qty, 0);
 
+  // คำนวณจำนวนคิวออเดอร์ที่รออยู่ (Pending orders)
+  const pendingOrdersCount = useMemo(() => {
+    return orders.filter((o) => o.status === 'pending').length;
+  }, [orders]);
+
   useEffect(() => {
     const code = memberPhoneCode.trim();
     if (code.length === 4) {
@@ -1000,7 +1005,8 @@ function CustomerView({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* ตะกร้าสินค้า */}
             <button
               onClick={() => setIsCartOpen(true)}
               className="relative p-2.5 rounded-2xl bg-amber-400/10 border border-amber-400/30 text-amber-400 hover:bg-amber-400/20 transition-colors flex items-center gap-2"
@@ -1016,6 +1022,19 @@ function CustomerView({
               </span>
             </button>
 
+            {/* แสดงคิวที่รออยู่ ด้านขวาใต้ตะกร้าสินค้า */}
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-white/[0.04] border border-white/10 text-xs font-semibold text-neutral-300">
+              <Users size={16} className="text-amber-400" />
+              <span>
+                คิวรอ:{' '}
+                <span className="font-mono font-black text-amber-400 text-sm">
+                  {pendingOrdersCount}
+                </span>{' '}
+                <span className="hidden sm:inline">ออเดอร์</span>
+              </span>
+            </div>
+
+            {/* ปุ่มเปิด/ปิดเสียง */}
             <button
               onClick={() => setSoundOn(!soundOn)}
               title={soundOn ? 'ปิดเสียง' : 'เปิดเสียง'}
@@ -1212,9 +1231,23 @@ function CustomerView({
                         : 'รอดำเนินการ'}
                     </span>
                   </div>
-                  <p className="text-white font-semibold truncate">
-                    {o.items.map((i) => `${i.name} x${i.qty}`).join(', ')}
-                  </p>
+                  <div className="space-y-1">
+                    {o.items.map((i, idx) => (
+                      <p
+                        key={idx}
+                        className="text-white font-semibold truncate"
+                      >
+                        {i.name} x{i.qty}{' '}
+                        <span
+                          className={`text-[11px] font-normal ${sweetnessColor(
+                            i.sweetness
+                          )}`}
+                        >
+                          (หวาน {i.sweetness}%)
+                        </span>
+                      </p>
+                    ))}
+                  </div>
                   <p className="text-amber-400 font-mono font-bold mt-1">
                     ฿{o.total}
                   </p>
@@ -1327,8 +1360,7 @@ function CustomerView({
                 </div>
 
                 <div className="mb-4 text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                  <Award size={14} /> จะได้รับคะแนนสะสม: +
-                  {Math.floor(cartTotal / 10)} คะแนน
+                  <Award size={14} /> จะได้รับคะแนนสะสม: +{cartTotal / 10} คะแนน
                 </div>
 
                 <button
@@ -2224,7 +2256,7 @@ function OrderCard({
           {order.memberPhoneCode && (
             <span className="inline-block mt-1 text-[10px] font-mono font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
               สมาชิก #{order.memberPhoneCode} (+
-              {order.earnedPoints || Math.floor(order.total / 10)} แต้ม)
+              {order.earnedPoints || order.total / 10} แต้ม)
             </span>
           )}
         </div>
