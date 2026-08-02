@@ -123,225 +123,225 @@ interface CategoryMetaItem {
 }
 
 /* ------------------------------------------------------------------ */
-/*  MENU DATA                                                         */
+/*  MENU INITIAL DATA                                                 */
 /* ------------------------------------------------------------------ */
 
-const INITIAL_MENU_ITEMS: Omit<MenuItem, 'available'>[] = [
+const INITIAL_MENU_ITEMS: Omit<MenuItem, 'id'>[] = [
   {
-    id: 'ic01',
     name: 'Iced Americano',
     nameTh: 'อเมริกาโน่เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 50,
+    available: true,
   },
   {
-    id: 'ic02',
     name: 'Iced Espresso',
     nameTh: 'เอสเพรสโซ่เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 55,
+    available: true,
   },
   {
-    id: 'ic03',
     name: 'Iced Americano Honey',
     nameTh: 'อเมริกาโน่น้ำผึ้งเย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 60,
+    available: true,
   },
   {
-    id: 'ic04',
     name: 'Iced Americano Orange',
     nameTh: 'อเมริกาโน่ส้มเย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 60,
+    available: true,
   },
   {
-    id: 'ic05',
     name: 'Iced Americano Coconut',
     nameTh: 'อเมริกาโน่มะพร้าวเย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 60,
+    available: true,
   },
   {
-    id: 'ic06',
     name: 'Iced Americano Honey Orange',
     nameTh: 'อเมริกาโน่น้ำผึ้งส้ม',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 60,
+    available: true,
   },
   {
-    id: 'ic07',
     name: 'Americano Mint',
     nameTh: 'อเมริกาโน่มินต์',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 55,
+    available: true,
   },
   {
-    id: 'ic08',
     name: 'Iced Cappucino',
     nameTh: 'คาปูชิโน่เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 55,
+    available: true,
   },
   {
-    id: 'ic09',
     name: 'Iced Mocha',
     nameTh: 'มอคค่าเย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 55,
+    available: true,
   },
   {
-    id: 'ic10',
     name: 'Iced Latte',
     nameTh: 'ลาเต้เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 55,
+    available: true,
   },
   {
-    id: 'ic11',
     name: 'Latte Coconut',
     nameTh: 'ลาเต้มะพร้าว',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 65,
+    available: true,
   },
   {
-    id: 'ic12',
     name: 'Iced Caramel Macchiato',
     nameTh: 'คาราเมลมัคคิอาโต้เย็น',
     category: 'ICED COFFEE',
     theme: 'blue',
     price: 55,
+    available: true,
   },
   {
-    id: 'hc01',
     name: 'Hot Americano',
     nameTh: 'อเมริกาโน่ร้อน',
     category: 'HOT COFFEE',
     theme: 'brown',
     price: 40,
+    available: true,
   },
   {
-    id: 'hc02',
     name: 'Hot Espresso',
     nameTh: 'เอสเพรสโซ่ร้อน',
     category: 'HOT COFFEE',
     theme: 'brown',
     price: 40,
+    available: true,
   },
   {
-    id: 'hc03',
     name: 'Hot Cappucino',
     nameTh: 'คาปูชิโน่ร้อน',
     category: 'HOT COFFEE',
     theme: 'brown',
     price: 45,
+    available: true,
   },
   {
-    id: 'hc04',
     name: 'Hot Caramel Macchiato',
     nameTh: 'คาราเมลมัคคิอาโต้ร้อน',
     category: 'HOT COFFEE',
     theme: 'brown',
     price: 45,
+    available: true,
   },
   {
-    id: 'hc05',
     name: 'Hot Mocha',
     nameTh: 'มอคค่าร้อน',
     category: 'HOT COFFEE',
     theme: 'brown',
     price: 45,
+    available: true,
   },
   {
-    id: 'hc06',
     name: 'Hot Latte',
     nameTh: 'ลาเต้ร้อน',
     category: 'HOT COFFEE',
     theme: 'brown',
     price: 45,
+    available: true,
   },
   {
-    id: 'hc07',
     name: 'Hot Americano Honey',
     nameTh: 'อเมริกาโน่น้ำผึ้งร้อน',
     category: 'HOT COFFEE',
     theme: 'brown',
     price: 45,
+    available: true,
   },
   {
-    id: 'mt01',
     name: 'Iced Matcha Latte',
     nameTh: 'มัทฉะลาเต้เย็น',
     category: 'MATCHA & TEA',
     theme: 'green',
     price: 65,
+    available: true,
   },
   {
-    id: 'mt02',
     name: 'Iced Matcha Coffee',
     nameTh: 'มัทฉะกาแฟ',
     category: 'MATCHA & TEA',
     theme: 'green',
     price: 70,
+    available: true,
   },
   {
-    id: 'mt03',
     name: 'Iced Matcha',
     nameTh: 'มัทฉะเย็น',
     category: 'MATCHA & TEA',
     theme: 'green',
     price: 60,
+    available: true,
   },
   {
-    id: 'mt04',
     name: 'Iced Matcha Orange',
     nameTh: 'มัทฉะส้ม',
     category: 'MATCHA & TEA',
     theme: 'green',
     price: 65,
+    available: true,
   },
   {
-    id: 'mt05',
     name: 'Lemon Tea',
     nameTh: 'ชามะนาว',
     category: 'MATCHA & TEA',
     theme: 'green',
     price: 40,
+    available: true,
   },
   {
-    id: 'mt06',
     name: 'Peach tea',
     nameTh: 'ชาพีช',
     category: 'MATCHA & TEA',
     theme: 'green',
     price: 40,
+    available: true,
   },
   {
-    id: 'co01',
     name: 'Cocoa',
     nameTh: 'โกโก้',
     category: 'MATCHA & TEA',
     theme: 'green',
     price: 50,
+    available: true,
   },
   {
-    id: 'co02',
     name: 'Extra shot',
     nameTh: 'เพิ่มช็อต',
     category: 'OTHERS',
     theme: 'gray',
     price: 15,
+    available: true,
   },
 ];
 
@@ -522,9 +522,7 @@ function useOrderSound(enabled: boolean) {
 
 export default function App() {
   const [view, setView] = useState<'customer' | 'barista'>(getViewFromURL);
-  const [menu, setMenu] = useState<MenuItem[]>(() =>
-    INITIAL_MENU_ITEMS.map((m) => ({ ...m, available: true }))
-  );
+  const [menu, setMenu] = useState<MenuItem[]>([]);
   const [memberPhoneCode, setMemberPhoneCode] = useState<string>('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [modalItem, setModalItem] = useState<MenuItem | null>(null);
@@ -538,23 +536,33 @@ export default function App() {
   const [now, setNow] = useState<number>(Date.now());
   const [soundOn, setSoundOn] = useState<boolean>(true);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [isAddingNew, setIsAddingNew] = useState<boolean>(false);
   const [shopOpen, setShopOpen] = useState<boolean>(true);
   const [shopMessage, setShopMessage] = useState<string>(
     'ร้านปิดให้บริการชั่วคราว'
   );
   const sound = useOrderSound(soundOn);
 
+  /* ------------------------------------------------------------------ */
+  /*  FIREBASE MENU DATA SYNCING                                        */
+  /* ------------------------------------------------------------------ */
   useEffect(() => {
-    const stockRef = ref(db, 'menuStock');
-    const unsubscribeStock = onValue(stockRef, (snapshot) => {
-      const stockData = snapshot.val();
-      if (stockData) {
-        setMenu((prev) =>
-          prev.map((m) => ({
-            ...m,
-            available: stockData[m.id] !== undefined ? stockData[m.id] : true,
-          }))
-        );
+    const menuRef = ref(db, 'menuItems');
+    const unsubscribeMenu = onValue(menuRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const menuList: MenuItem[] = Object.keys(data).map((key) => ({
+          id: key,
+          ...data[key],
+          available: data[key].available ?? true,
+        }));
+        setMenu(menuList);
+      } else {
+        // หากไม่มีข้อมูลใน DB ให้เซ็ต Initial Menu เข้าไปอัตโนมัติ
+        INITIAL_MENU_ITEMS.forEach((item) => {
+          const newRef = push(ref(db, 'menuItems'));
+          set(newRef, item);
+        });
       }
     });
 
@@ -571,7 +579,7 @@ export default function App() {
     });
 
     return () => {
-      unsubscribeStock();
+      unsubscribeMenu();
       unsubscribeShop();
       unsubscribeMsg();
     };
@@ -795,22 +803,36 @@ export default function App() {
     }
   }
 
+  /* ------------------------------------------------------------------ */
+  /*  PERSISTENT MENU MANAGEMENT FUNCTIONS                              */
+  /* ------------------------------------------------------------------ */
+
   function toggleStock(id: string) {
     const item = menu.find((m) => m.id === id);
     if (!item) return;
     const nextStatus = !item.available;
-    set(ref(db, `menuStock/${id}`), nextStatus);
+    update(ref(db, `menuItems/${id}`), { available: nextStatus });
   }
 
   function updateMenuItem(id: string, updates: Partial<MenuItem>) {
-    setMenu((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
-    );
-    if (updates.available !== undefined) {
-      set(ref(db, `menuStock/${id}`), updates.available);
-    }
+    update(ref(db, `menuItems/${id}`), updates);
     setEditingItem(null);
-    setToast(`อัปเดตเมนู ${updates.name || ''} เรียบร้อย`);
+    setToast(`อัปเดตเมนู ${updates.name || ''} เรียบร้อยแล้ว`);
+  }
+
+  function addMenuItem(newItem: Omit<MenuItem, 'id'>) {
+    const menuListRef = ref(db, 'menuItems');
+    const newItemRef = push(menuListRef);
+    set(newItemRef, newItem);
+    setIsAddingNew(false);
+    setToast(`เพิ่มเมนู ${newItem.name} เรียบร้อยแล้ว`);
+  }
+
+  function deleteMenuItem(id: string) {
+    const item = menu.find((m) => m.id === id);
+    set(ref(db, `menuItems/${id}`), null);
+    setEditingItem(null);
+    setToast(`ลบเมนู ${item?.name || ''} เรียบร้อยแล้ว`);
   }
 
   const activeOrders = useMemo(
@@ -851,6 +873,7 @@ export default function App() {
           setSoundOn={setSoundOn}
           editingItem={editingItem}
           setEditingItem={setEditingItem}
+          setIsAddingNew={setIsAddingNew}
           updateMenuItem={updateMenuItem}
           shopOpen={shopOpen}
           toggleShopStatus={toggleShopStatus}
@@ -869,6 +892,20 @@ export default function App() {
           setQty={setQty}
           onClose={closeModal}
           onAddToCart={addToCart}
+        />
+      )}
+
+      {baristaTab === 'editor' && (editingItem || isAddingNew) && (
+        <MenuEditModal
+          item={editingItem}
+          isNew={isAddingNew}
+          onClose={() => {
+            setEditingItem(null);
+            setIsAddingNew(false);
+          }}
+          onSave={updateMenuItem}
+          onAdd={addMenuItem}
+          onDelete={deleteMenuItem}
         />
       )}
 
@@ -922,7 +959,6 @@ function CustomerView({
   const cartTotal = cart.reduce((sum, item) => sum + item.total, 0);
   const totalCartItems = cart.reduce((sum, i) => sum + i.qty, 0);
 
-  // คำนวณจำนวนคิวออเดอร์ที่รออยู่ (Pending orders)
   const pendingOrdersCount = useMemo(() => {
     return orders.filter((o) => o.status === 'pending').length;
   }, [orders]);
@@ -1006,7 +1042,6 @@ function CustomerView({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* ตะกร้าสินค้า */}
             <button
               onClick={() => setIsCartOpen(true)}
               className="relative p-2.5 rounded-2xl bg-amber-400/10 border border-amber-400/30 text-amber-400 hover:bg-amber-400/20 transition-colors flex items-center gap-2"
@@ -1022,7 +1057,6 @@ function CustomerView({
               </span>
             </button>
 
-            {/* แสดงคิวที่รออยู่ ด้านขวาใต้ตะกร้าสินค้า */}
             <div className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-white/[0.04] border border-white/10 text-xs font-semibold text-neutral-300">
               <Users size={16} className="text-amber-400" />
               <span>
@@ -1034,7 +1068,6 @@ function CustomerView({
               </span>
             </div>
 
-            {/* ปุ่มเปิด/ปิดเสียง */}
             <button
               onClick={() => setSoundOn(!soundOn)}
               title={soundOn ? 'ปิดเสียง' : 'เปิดเสียง'}
@@ -1396,7 +1429,7 @@ function MenuButton({
   item: MenuItem;
   onClick: () => void;
 }) {
-  const bt = BUTTON_THEME[item.theme];
+  const bt = BUTTON_THEME[item.theme] || BUTTON_THEME.gray;
 
   return (
     <button
@@ -1551,6 +1584,7 @@ interface BaristaViewProps {
   setSoundOn: (val: boolean) => void;
   editingItem: MenuItem | null;
   setEditingItem: (item: MenuItem | null) => void;
+  setIsAddingNew: (val: boolean) => void;
   updateMenuItem: (id: string, updates: Partial<MenuItem>) => void;
   shopOpen: boolean;
   toggleShopStatus: () => void;
@@ -1573,6 +1607,7 @@ function BaristaView({
   setSoundOn,
   editingItem,
   setEditingItem,
+  setIsAddingNew,
   updateMenuItem,
   shopOpen,
   toggleShopStatus,
@@ -1689,7 +1724,6 @@ function BaristaView({
           <ListChecks size={15} /> Live Orders & History
         </button>
 
-        {/* ปุ่มระบบจัดการแต้มสะสม */}
         <button
           onClick={() => setBaristaTab('points')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
@@ -1744,23 +1778,15 @@ function BaristaView({
       )}
 
       {baristaTab === 'editor' && (
-        <MenuEditor menu={menu} setEditingItem={setEditingItem} />
-      )}
-
-      {editingItem && (
-        <MenuEditModal
-          item={editingItem}
-          onClose={() => setEditingItem(null)}
-          onSave={updateMenuItem}
+        <MenuEditor
+          menu={menu}
+          setEditingItem={setEditingItem}
+          setIsAddingNew={setIsAddingNew}
         />
       )}
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  BARISTA POINTS MANAGER COMPONENT                                 */
-/* ------------------------------------------------------------------ */
 
 function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
   const [searchPhone, setSearchPhone] = useState<string>('');
@@ -1846,7 +1872,6 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
           หรือตัดคะแนนสะสมเมื่อลูกค้านำแต้มมาแลกส่วนลด
         </p>
 
-        {/* ค้นหาสมาชิก */}
         <div className="space-y-2 mb-6">
           <label className="text-xs font-bold text-neutral-300 block">
             ค้นหารหัสสมาชิก (เบอร์โทร 4 ตัวท้าย)
@@ -1880,7 +1905,6 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
           </div>
         </div>
 
-        {/* ผลลัพธ์และฟอร์มจัดการแต้ม */}
         {member && (
           <div className="pt-5 border-t border-white/10 space-y-6 animate-fadeIn">
             <div className="p-4 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-between">
@@ -1905,7 +1929,6 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
               </div>
             </div>
 
-            {/* ส่วนเพิ่มแต้มอิสระ (+Points) */}
             <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-3">
               <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
                 <PlusCircle size={15} /> บวกแต้มสะสมเพิ่ม (Add Points)
@@ -1944,7 +1967,6 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
               </button>
             </div>
 
-            {/* ส่วนหัก/ตัดแต้ม (-Points) */}
             <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 space-y-3">
               <label className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
                 <MinusCircle size={15} /> หัก / แลกคะแนนออก (Redeem Points)
@@ -2404,9 +2426,11 @@ function StockControl({
 function MenuEditor({
   menu,
   setEditingItem,
+  setIsAddingNew,
 }: {
   menu: MenuItem[];
   setEditingItem: (item: MenuItem) => void;
+  setIsAddingNew: (val: boolean) => void;
 }) {
   const categories: CategoryType[] = [
     'ICED COFFEE',
@@ -2417,10 +2441,19 @@ function MenuEditor({
 
   return (
     <div className="mt-6">
-      <p className="text-xs text-neutral-400 mb-4 flex items-center gap-1.5">
-        <Pencil size={14} className="text-teal-400" /> คลิกที่เมนูเพื่อแก้ไขราคา
-        หรือชื่อเมนูภาษาไทย/อังกฤษ
-      </p>
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <p className="text-xs text-neutral-400 flex items-center gap-1.5">
+          <Pencil size={14} className="text-teal-400" />{' '}
+          คลิกที่เมนูเพื่อแก้ไข/ลบ หรือคลิกปุ่มเพิ่มเมนูเพื่อสร้างรายการใหม่
+        </p>
+        <button
+          onClick={() => setIsAddingNew(true)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-extrabold text-xs shadow-[0_0_15px_rgba(45,212,191,0.4)] transition-all active:scale-[0.98]"
+        >
+          <Plus size={16} /> เพิ่มเมนูใหม่ (Add New Menu)
+        </button>
+      </div>
+
       {categories.map((cat) => {
         const meta = CATEGORY_META[cat];
         const Icon = meta.icon;
@@ -2465,26 +2498,65 @@ function MenuEditor({
 
 function MenuEditModal({
   item,
+  isNew = false,
   onClose,
   onSave,
+  onAdd,
+  onDelete,
 }: {
-  item: MenuItem;
+  item: MenuItem | null;
+  isNew?: boolean;
   onClose: () => void;
-  onSave: (id: string, updates: Partial<MenuItem>) => void;
+  onSave?: (id: string, updates: Partial<MenuItem>) => void;
+  onAdd?: (item: Omit<MenuItem, 'id'>) => void;
+  onDelete?: (id: string) => void;
 }) {
-  const [name, setName] = useState<string>(item.name);
-  const [nameTh, setNameTh] = useState<string>(item.nameTh);
-  const [price, setPrice] = useState<number | string>(item.price);
-  const [available, setAvailable] = useState<boolean>(item.available);
+  const [name, setName] = useState<string>(item?.name || '');
+  const [nameTh, setNameTh] = useState<string>(item?.nameTh || '');
+  const [category, setCategory] = useState<CategoryType>(
+    item?.category || 'ICED COFFEE'
+  );
+  const [theme, setTheme] = useState<ThemeType>(item?.theme || 'blue');
+  const [price, setPrice] = useState<number | string>(item?.price ?? 50);
+  const [available, setAvailable] = useState<boolean>(item?.available ?? true);
 
-  function handleSave() {
+  const categories: CategoryType[] = [
+    'ICED COFFEE',
+    'HOT COFFEE',
+    'MATCHA & TEA',
+    'OTHERS',
+  ];
+
+  const themeOptions: { value: ThemeType; label: string }[] = [
+    { value: 'blue', label: 'Blue (กาแฟเย็น)' },
+    { value: 'brown', label: 'Brown (กาแฟร้อน)' },
+    { value: 'green', label: 'Green (ชา/มัทฉะ)' },
+    { value: 'teal', label: 'Teal' },
+    { value: 'gray', label: 'Gray (อื่นๆ)' },
+  ];
+
+  function handleSubmit() {
     const cleanPrice = Math.max(0, Number(price) || 0);
-    onSave(item.id, {
-      name: name.trim() || item.name,
-      nameTh: nameTh.trim() || item.nameTh,
-      price: cleanPrice,
-      available,
-    });
+    if (isNew) {
+      if (!name.trim() || !nameTh.trim()) return;
+      onAdd?.({
+        name: name.trim(),
+        nameTh: nameTh.trim(),
+        category,
+        theme,
+        price: cleanPrice,
+        available,
+      });
+    } else if (item && onSave) {
+      onSave(item.id, {
+        name: name.trim() || item.name,
+        nameTh: nameTh.trim() || item.nameTh,
+        category,
+        theme,
+        price: cleanPrice,
+        available,
+      });
+    }
   }
 
   return (
@@ -2493,10 +2565,18 @@ function MenuEditModal({
         className="absolute inset-0 bg-black/75 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative w-full sm:max-w-sm bg-[#0D1117] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto shadow-2xl">
+      <div className="relative w-full sm:max-w-md bg-[#0D1117] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto shadow-2xl">
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Pencil size={16} className="text-teal-400" /> แก้ไขเมนู
+            {isNew ? (
+              <>
+                <Plus size={18} className="text-teal-400" /> เพิ่มเมนูใหม่
+              </>
+            ) : (
+              <>
+                <Pencil size={16} className="text-teal-400" /> แก้ไขเมนู
+              </>
+            )}
           </h3>
           <button
             onClick={onClose}
@@ -2512,6 +2592,7 @@ function MenuEditModal({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Iced Espresso"
           className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-3.5 py-2.5 text-sm text-white mb-4 focus:outline-none focus:ring-2 focus:ring-teal-400"
         />
 
@@ -2521,8 +2602,52 @@ function MenuEditModal({
         <input
           value={nameTh}
           onChange={(e) => setNameTh(e.target.value)}
+          placeholder="เช่น เอสเพรสโซ่เย็น"
           className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-3.5 py-2.5 text-sm text-white mb-4 focus:outline-none focus:ring-2 focus:ring-teal-400"
         />
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+              หมวดหมู่ (Category)
+            </label>
+            <select
+              value={category}
+              onChange={(e) => {
+                const cat = e.target.value as CategoryType;
+                setCategory(cat);
+                if (cat === 'ICED COFFEE') setTheme('blue');
+                else if (cat === 'HOT COFFEE') setTheme('brown');
+                else if (cat === 'MATCHA & TEA') setTheme('green');
+                else setTheme('gray');
+              }}
+              className="w-full rounded-xl bg-[#161B22] border border-white/10 px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+            >
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+              ธีมสี (Theme)
+            </label>
+            <select
+              value={theme}
+              onChange={(e) => setTheme(e.target.value as ThemeType)}
+              className="w-full rounded-xl bg-[#161B22] border border-white/10 px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+            >
+              {themeOptions.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
           ราคา (บาท)
@@ -2567,12 +2692,36 @@ function MenuEditModal({
           </button>
         </div>
 
-        <button
-          onClick={handleSave}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-teal-400 to-teal-300 text-black font-extrabold text-sm active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(45,212,191,0.6)]"
-        >
-          <Save size={16} /> บันทึกการเปลี่ยนแปลง
-        </button>
+        <div className="flex gap-2">
+          {!isNew && item && onDelete && (
+            <button
+              onClick={() => {
+                if (confirm(`คุณต้องการลบเมนู "${item.name}" ใช่หรือไม่?`)) {
+                  onDelete(item.id);
+                }
+              }}
+              className="flex items-center justify-center p-3 rounded-2xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/40 text-rose-300 transition-colors"
+              title="ลบเมนูนี้"
+            >
+              <Trash2 size={18} />
+            </button>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-teal-400 to-teal-300 text-black font-extrabold text-sm active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(45,212,191,0.6)]"
+          >
+            {isNew ? (
+              <>
+                <Plus size={18} /> สร้างเมนูใหม่
+              </>
+            ) : (
+              <>
+                <Save size={16} /> บันทึกการเปลี่ยนแปลง
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
