@@ -558,7 +558,6 @@ export default function App() {
         }));
         setMenu(menuList);
       } else {
-        // หากไม่มีข้อมูลใน DB ให้เซ็ต Initial Menu เข้าไปอัตโนมัติ
         INITIAL_MENU_ITEMS.forEach((item) => {
           const newRef = push(ref(db, 'menuItems'));
           set(newRef, item);
@@ -1626,10 +1625,13 @@ function BaristaView({
 }: BaristaViewProps) {
   const [clock, setClock] = useState<Date>(new Date());
   const [historyFilter, setHistoryFilter] = useState<
-    'today' | 'yesterday' | 'custom' | 'all'
+    'today' | 'yesterday' | 'custom' | 'monthly' | 'all'
   >('today');
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
+  );
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    new Date().toISOString().slice(0, 7) // YYYY-MM
   );
   const [tempMsg, setTempMsg] = useState<string>(shopMessage);
 
@@ -1777,6 +1779,8 @@ function BaristaView({
           setHistoryFilter={setHistoryFilter}
           selectedDate={selectedDate}
           setSelectedDate={setSelectedDate}
+          selectedMonth={selectedMonth}
+          setSelectedMonth={setSelectedMonth}
         />
       )}
 
@@ -2060,15 +2064,21 @@ function OrdersFeed({
   setHistoryFilter,
   selectedDate,
   setSelectedDate,
+  selectedMonth,
+  setSelectedMonth,
 }: {
   activeOrders: Order[];
   allOrders: Order[];
   advanceOrder: (id: string, status: OrderStatus) => void;
   now: number;
-  historyFilter: 'today' | 'yesterday' | 'custom' | 'all';
-  setHistoryFilter: (filter: 'today' | 'yesterday' | 'custom' | 'all') => void;
+  historyFilter: 'today' | 'yesterday' | 'custom' | 'monthly' | 'all';
+  setHistoryFilter: (
+    filter: 'today' | 'yesterday' | 'custom' | 'monthly' | 'all'
+  ) => void;
   selectedDate: string;
   setSelectedDate: (date: string) => void;
+  selectedMonth: string;
+  setSelectedMonth: (month: string) => void;
 }) {
   const filteredHistory = useMemo(() => {
     if (historyFilter === 'all') {
@@ -2095,13 +2105,20 @@ function OrdersFeed({
       const customStart = new Date(year, month - 1, day).getTime();
       startTime = customStart;
       endTime = customStart + 24 * 60 * 60 * 1000 - 1;
+    } else if (historyFilter === 'monthly') {
+      if (!selectedMonth) return [];
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const monthStart = new Date(year, month - 1, 1).getTime();
+      const monthEnd = new Date(year, month, 0, 23, 59, 59, 999).getTime();
+      startTime = monthStart;
+      endTime = monthEnd;
     }
 
     return allOrders.filter((o) => {
       if (o.status === 'pending') return false;
       return o.createdAt >= startTime && o.createdAt <= endTime;
     });
-  }, [allOrders, now, historyFilter, selectedDate]);
+  }, [allOrders, now, historyFilter, selectedDate, selectedMonth]);
 
   const pendingCount = activeOrders.length;
   const doneOrders = filteredHistory.filter((o) => o.status === 'done');
@@ -2109,6 +2126,16 @@ function OrdersFeed({
   const cancelCount = filteredHistory.filter(
     (o) => o.status === 'cancelled'
   ).length;
+
+  const totalCups = useMemo(
+    () =>
+      doneOrders.reduce(
+        (sum, o) =>
+          sum + o.items.reduce((itemSum, item) => itemSum + item.qty, 0),
+        0
+      ),
+    [doneOrders]
+  );
 
   const totalRevenue = useMemo(
     () => doneOrders.reduce((sum, o) => sum + o.total, 0),
@@ -2118,7 +2145,7 @@ function OrdersFeed({
   return (
     <div className="mt-6">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <StatChip
             label="Pending / รอดำเนินการ"
             value={pendingCount}
@@ -2128,6 +2155,11 @@ function OrdersFeed({
             label="Done / เสร็จสิ้น"
             value={doneCount}
             color="text-emerald-300"
+          />
+          <StatChip
+            label="Cups / แก้ว"
+            value={`${totalCups} แก้ว`}
+            color="text-cyan-300"
           />
           <StatChip
             label="Cancelled / ยกเลิก"
@@ -2176,6 +2208,16 @@ function OrdersFeed({
             เลือกวันเอง
           </button>
           <button
+            onClick={() => setHistoryFilter('monthly')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+              historyFilter === 'monthly'
+                ? 'bg-amber-400 text-black shadow-md'
+                : 'text-neutral-300 hover:text-white'
+            }`}
+          >
+            รายเดือน
+          </button>
+          <button
             onClick={() => setHistoryFilter('all')}
             className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
               historyFilter === 'all'
@@ -2191,6 +2233,15 @@ function OrdersFeed({
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
+              className="ml-1 bg-white/[0.06] border border-amber-400/40 text-amber-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
+            />
+          )}
+
+          {historyFilter === 'monthly' && (
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
               className="ml-1 bg-white/[0.06] border border-amber-400/40 text-amber-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
             />
           )}
