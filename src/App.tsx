@@ -381,31 +381,31 @@ const BUTTON_THEME: Record<
     grad: 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-500 border-sky-400/50 hover:from-blue-500 hover:to-cyan-400 shadow-[0_4px_20px_rgba(14,165,233,0.3)]',
     text: 'text-white font-extrabold',
     price: 'text-sky-100 font-black',
-    sub: 'text-sky-100/90 font-medium',
+    sub: 'text-sky-100/90 font-bold',
   },
   brown: {
     grad: 'bg-gradient-to-r from-[#4A2810] via-[#6F3C17] to-[#8C4A1B] border-amber-600/50 hover:from-[#5A3114] hover:to-[#9C5320] shadow-[0_4px_20px_rgba(140,74,27,0.3)]',
     text: 'text-amber-50 font-extrabold',
     price: 'text-amber-200 font-black',
-    sub: 'text-amber-100/90 font-medium',
+    sub: 'text-amber-100/90 font-bold',
   },
   teal: {
     grad: 'bg-gradient-to-r from-teal-700 via-teal-600 to-emerald-500 border-teal-400/50 hover:from-teal-600 hover:to-emerald-400 shadow-[0_4px_20px_rgba(20,184,166,0.3)]',
     text: 'text-white font-extrabold',
     price: 'text-teal-100 font-black',
-    sub: 'text-teal-100/90 font-medium',
+    sub: 'text-teal-100/90 font-bold',
   },
   green: {
     grad: 'bg-gradient-to-r from-emerald-800 via-emerald-700 to-green-600 border-emerald-500/50 hover:from-emerald-700 hover:to-green-500 shadow-[0_4px_20px_rgba(16,185,129,0.3)]',
     text: 'text-white font-extrabold',
     price: 'text-emerald-100 font-black',
-    sub: 'text-emerald-100/90 font-medium',
+    sub: 'text-emerald-100/90 font-bold',
   },
   gray: {
     grad: 'bg-gradient-to-r from-stone-700 via-neutral-700 to-zinc-600 border-stone-500/50 hover:from-stone-600 hover:to-zinc-500 shadow-[0_4px_20px_rgba(113,113,122,0.3)]',
     text: 'text-neutral-100 font-extrabold',
     price: 'text-amber-300 font-black',
-    sub: 'text-neutral-300 font-medium',
+    sub: 'text-neutral-200 font-bold',
   },
 };
 
@@ -704,7 +704,7 @@ export default function App() {
     };
 
     setCart((prev) => [...prev, newCartItem]);
-    setToast(`เพิ่ม ${modalItem.name} ลงในตะกร้าแล้ว`);
+    setToast(`เพิ่ม ${modalItem.nameTh} (${modalItem.name}) ลงในตะกร้าแล้ว`);
     setModalItem(null);
   }
 
@@ -817,7 +817,9 @@ export default function App() {
   function updateMenuItem(id: string, updates: Partial<MenuItem>) {
     update(ref(db, `menuItems/${id}`), updates);
     setEditingItem(null);
-    setToast(`อัปเดตเมนู ${updates.name || ''} เรียบร้อยแล้ว`);
+    setToast(
+      `อัปเดตเมนู ${updates.nameTh || updates.name || ''} เรียบร้อยแล้ว`
+    );
   }
 
   function addMenuItem(newItem: Omit<MenuItem, 'id'>) {
@@ -825,14 +827,14 @@ export default function App() {
     const newItemRef = push(menuListRef);
     set(newItemRef, newItem);
     setIsAddingNew(false);
-    setToast(`เพิ่มเมนู ${newItem.name} เรียบร้อยแล้ว`);
+    setToast(`เพิ่มเมนู ${newItem.nameTh} (${newItem.name}) เรียบร้อยแล้ว`);
   }
 
   function deleteMenuItem(id: string) {
     const item = menu.find((m) => m.id === id);
     set(ref(db, `menuItems/${id}`), null);
     setEditingItem(null);
-    setToast(`ลบเมนู ${item?.name || ''} เรียบร้อยแล้ว`);
+    setToast(`ลบเมนู ${item?.nameTh || item?.name || ''} เรียบร้อยแล้ว`);
   }
 
   const activeOrders = useMemo(
@@ -910,8 +912,8 @@ export default function App() {
       )}
 
       {toast && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] px-4 py-3 rounded-2xl bg-[#0D1117] border border-emerald-400/50 shadow-[0_0_30px_-5px_rgba(16,185,129,0.5)] flex items-center gap-2 text-sm font-semibold animate-bounce">
-          <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] px-5 py-3.5 rounded-2xl bg-[#0D1117] border border-emerald-400/50 shadow-[0_0_30px_-5px_rgba(16,185,129,0.5)] flex items-center gap-2.5 text-base font-bold animate-bounce">
+          <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
           <span>{toast}</span>
         </div>
       )}
@@ -1015,14 +1017,14 @@ function CustomerView({
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-none text-white">
               Cof N&apos; Rob <span className="text-amber-400">Coffee Bar</span>
             </h1>
-            <p className="text-xs text-neutral-400 mt-1">
+            <p className="text-sm font-semibold text-neutral-300 mt-1">
               สะสมแต้มง่ายๆ: ซื้อครบทุก 10 บาท = 1 คะแนน
             </p>
 
             <div className="mt-3 max-w-xs">
               <div className="relative">
                 <Phone
-                  size={15}
+                  size={16}
                   className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400"
                 />
                 <input
@@ -1035,7 +1037,7 @@ function CustomerView({
                   }}
                   placeholder="กรอกเบอร์โทร 4 ตัวท้าย..."
                   maxLength={4}
-                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-mono font-bold text-amber-300 placeholder:text-neutral-500 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono font-bold text-amber-300 placeholder:text-neutral-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
               </div>
             </div>
@@ -1052,16 +1054,16 @@ function CustomerView({
                   {totalCartItems}
                 </span>
               )}
-              <span className="hidden sm:inline text-xs font-bold font-mono">
+              <span className="hidden sm:inline text-sm font-bold font-mono">
                 ฿{cartTotal}
               </span>
             </button>
 
-            <div className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-white/[0.04] border border-white/10 text-xs font-semibold text-neutral-300">
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-white/[0.04] border border-white/10 text-xs sm:text-sm font-bold text-neutral-200">
               <Users size={16} className="text-amber-400" />
               <span>
                 คิวรอ:{' '}
-                <span className="font-mono font-black text-amber-400 text-sm">
+                <span className="font-mono font-black text-amber-400 text-base">
                   {pendingOrdersCount}
                 </span>{' '}
                 <span className="hidden sm:inline">ออเดอร์</span>
@@ -1082,15 +1084,15 @@ function CustomerView({
           <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-400/30 flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-amber-400/20 text-amber-400">
-                <Award size={24} />
+                <Award size={26} />
               </div>
               <div>
-                <span className="text-xs text-neutral-400 font-semibold block">
+                <span className="text-sm text-neutral-300 font-bold block">
                   สมาชิกเบอร์ท้าย #{memberPhoneCode}
                 </span>
-                <span className="text-lg font-black text-amber-400 font-mono">
+                <span className="text-xl font-black text-amber-400 font-mono">
                   {memberInfo ? memberInfo.points : 0}{' '}
-                  <span className="text-xs font-normal text-amber-200">
+                  <span className="text-sm font-semibold text-amber-200">
                     คะแนนสะสม
                   </span>
                 </span>
@@ -1098,10 +1100,10 @@ function CustomerView({
             </div>
 
             <div className="text-right">
-              <span className="text-[11px] text-neutral-400 block flex items-center gap-1 justify-end">
-                <History size={12} /> เคยสั่งซื้อทั้งหมด
+              <span className="text-xs text-neutral-300 block flex items-center gap-1 justify-end font-semibold">
+                <History size={14} /> เคยสั่งซื้อทั้งหมด
               </span>
-              <span className="text-xs font-bold text-white font-mono">
+              <span className="text-sm font-bold text-white font-mono">
                 {memberHistory.length} ออเดอร์
               </span>
             </div>
@@ -1115,10 +1117,10 @@ function CustomerView({
             <XCircle size={36} />
           </div>
           <div>
-            <h2 className="text-xl font-black text-white tracking-wide">
+            <h2 className="text-2xl font-black text-white tracking-wide">
               วันนี้ร้านปิดให้บริการ (Shop is Closed)
             </h2>
-            <p className="text-sm text-rose-300 mt-1 font-medium whitespace-pre-wrap">
+            <p className="text-base text-rose-200 mt-1 font-bold whitespace-pre-wrap">
               {shopMessage}
             </p>
           </div>
@@ -1132,7 +1134,7 @@ function CustomerView({
       >
         {!selectedCategory ? (
           <div>
-            <h2 className="text-base font-bold text-neutral-300 mb-4">
+            <h2 className="text-lg font-extrabold text-neutral-200 mb-4">
               เลือกหมวดหมู่เครื่องดื่ม (Select Category)
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1156,10 +1158,10 @@ function CustomerView({
                     </div>
 
                     <div className="mt-6">
-                      <h3 className="text-xl font-black text-white tracking-wide">
+                      <h3 className="text-2xl font-black text-white tracking-wide">
                         {meta.labelTh}
                       </h3>
-                      <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest mt-0.5">
+                      <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest mt-1">
                         {meta.label}
                       </p>
                     </div>
@@ -1173,9 +1175,9 @@ function CustomerView({
             <div className="flex items-center justify-between mb-6">
               <button
                 onClick={() => setSelectedCategory(null)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 hover:bg-white/[0.1] text-amber-400 text-xs font-bold transition-all"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 hover:bg-white/[0.1] text-amber-400 text-sm font-extrabold transition-all"
               >
-                <ArrowLeft size={16} /> กลับไปเลือกหมวดหมู่
+                <ArrowLeft size={18} /> กลับไปเลือกหมวดหมู่
               </button>
 
               <div className="flex items-center gap-2">
@@ -1186,13 +1188,13 @@ function CustomerView({
                     <button
                       key={catKey}
                       onClick={() => setSelectedCategory(catKey)}
-                      className={`p-2 rounded-xl border transition-colors flex items-center gap-1.5 text-xs font-bold ${
+                      className={`p-2 sm:px-3 sm:py-2 rounded-xl border transition-colors flex items-center gap-1.5 text-xs sm:text-sm font-bold ${
                         selectedCategory === catKey
                           ? 'bg-amber-400 border-amber-400 text-black'
-                          : 'bg-white/[0.03] border-white/10 text-neutral-400 hover:text-white'
+                          : 'bg-white/[0.03] border-white/10 text-neutral-300 hover:text-white'
                       }`}
                     >
-                      <Icon size={14} />
+                      <Icon size={16} />
                       <span className="hidden sm:inline">{meta.labelTh}</span>
                     </button>
                   );
@@ -1200,17 +1202,17 @@ function CustomerView({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2.5 mb-5">
               {(() => {
                 const meta = CATEGORY_META[selectedCategory];
                 const Icon = meta.icon;
                 return (
                   <>
-                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-400/10 border border-amber-400/30 text-amber-400">
-                      <Icon size={18} />
+                    <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-400">
+                      <Icon size={22} />
                     </span>
                     <div>
-                      <h2 className="text-lg font-bold text-white tracking-wide">
+                      <h2 className="text-2xl font-black text-white tracking-wide">
                         {meta.labelTh}
                       </h2>
                       <p className="text-xs text-neutral-400">{meta.label}</p>
@@ -1220,7 +1222,7 @@ function CustomerView({
               })()}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5">
               {visibleItems.map((item) => (
                 <MenuButton
                   key={item.id}
@@ -1234,22 +1236,22 @@ function CustomerView({
 
         {memberHistory.length > 0 && (
           <div className="mt-10 pt-6 border-t border-white/10">
-            <h3 className="text-sm font-bold text-amber-400 mb-3 flex items-center gap-2">
-              <History size={16} /> ประวัติการสั่งซื้อย้อนหลังของคุณ (เบอร์ท้าย
+            <h3 className="text-base font-extrabold text-amber-400 mb-3 flex items-center gap-2">
+              <History size={18} /> ประวัติการสั่งซื้อย้อนหลังของคุณ (เบอร์ท้าย
               #{memberPhoneCode})
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
               {memberHistory.slice(0, 5).map((o) => (
                 <div
                   key={o.id}
-                  className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 text-xs"
+                  className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 text-sm"
                 >
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-neutral-400">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-xs text-neutral-400 font-semibold">
                       {fmtDate(o.createdAt)}
                     </span>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold ${
                         o.status === 'done'
                           ? 'bg-emerald-500/20 text-emerald-300'
                           : o.status === 'cancelled'
@@ -1266,22 +1268,25 @@ function CustomerView({
                   </div>
                   <div className="space-y-1">
                     {o.items.map((i, idx) => (
-                      <p
-                        key={idx}
-                        className="text-white font-semibold truncate"
-                      >
-                        {i.name} x{i.qty}{' '}
+                      <div key={idx} className="truncate">
+                        <span className="text-base font-extrabold text-white">
+                          {i.qty > 1 ? `${i.qty}× ` : ''}
+                          {i.nameTh}
+                        </span>
+                        <span className="text-xs text-neutral-400 font-normal ml-1.5">
+                          ({i.name})
+                        </span>{' '}
                         <span
-                          className={`text-[11px] font-normal ${sweetnessColor(
+                          className={`text-xs font-bold ${sweetnessColor(
                             i.sweetness
                           )}`}
                         >
                           (หวาน {i.sweetness}%)
                         </span>
-                      </p>
+                      </div>
                     ))}
                   </div>
-                  <p className="text-amber-400 font-mono font-bold mt-1">
+                  <p className="text-amber-400 font-mono font-bold mt-1.5 text-base">
                     ฿{o.total}
                   </p>
                 </div>
@@ -1299,29 +1304,29 @@ function CustomerView({
           />
           <div className="relative w-full sm:max-w-md bg-[#0D1117] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
             <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <ShoppingBag size={20} className="text-amber-400" />
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <ShoppingBag size={22} className="text-amber-400" />
                 รายการที่สั่งไว้ (Cart)
               </h2>
               <button
                 onClick={() => setIsCartOpen(false)}
                 className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
               >
-                <X size={16} />
+                <X size={18} />
               </button>
             </div>
 
             {!shopOpen && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-300 text-xs font-semibold text-center">
+              <div className="mb-4 p-3 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-300 text-sm font-bold text-center">
                 ร้านปิดอยู่ ไม่สามารถส่งออเดอร์ได้ในขณะนี้
               </div>
             )}
 
             {cart.length === 0 ? (
-              <div className="py-12 text-center border border-dashed border-white/10 rounded-2xl text-neutral-500 my-2">
-                <ShoppingBag size={32} className="mx-auto mb-2 opacity-40" />
-                <p className="text-sm font-medium">ยังไม่มีรายการในตะกร้า</p>
-                <p className="text-xs text-neutral-600 mt-1">
+              <div className="py-12 text-center border border-dashed border-white/10 rounded-2xl text-neutral-400 my-2">
+                <ShoppingBag size={36} className="mx-auto mb-2 opacity-40" />
+                <p className="text-base font-bold">ยังไม่มีรายการในตะกร้า</p>
+                <p className="text-xs text-neutral-400 mt-1">
                   เลือกเครื่องดื่มจากเมนูด้านหลัง
                 </p>
               </div>
@@ -1330,17 +1335,20 @@ function CustomerView({
                 {cart.map((item) => (
                   <div
                     key={item.cartId}
-                    className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5"
+                    className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-white/[0.03] border border-white/5"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-white truncate">
+                      <p className="text-base font-black text-white truncate">
+                        {item.nameTh}
+                      </p>
+                      <p className="text-xs text-neutral-400 truncate">
                         {item.name}
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-neutral-400">
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs font-bold text-amber-300">
                           หวาน {item.sweetness}%
                         </span>
-                        <span className="text-[10px] text-neutral-500 font-mono">
+                        <span className="text-xs text-neutral-400 font-mono">
                           ฿{item.unitPrice}/แก้ว
                         </span>
                       </div>
@@ -1350,22 +1358,22 @@ function CustomerView({
                       <div className="flex items-center gap-1 bg-white/[0.06] rounded-lg px-1.5 py-0.5">
                         <button
                           onClick={() => updateCartQty(item.cartId, -1)}
-                          className="p-1 text-neutral-400 hover:text-white"
+                          className="p-1 text-neutral-300 hover:text-white"
                         >
-                          <Minus size={12} />
+                          <Minus size={14} />
                         </button>
-                        <span className="text-xs font-mono font-bold w-4 text-center">
+                        <span className="text-sm font-mono font-bold w-4 text-center">
                           {item.qty}
                         </span>
                         <button
                           onClick={() => updateCartQty(item.cartId, 1)}
-                          className="p-1 text-neutral-400 hover:text-white"
+                          className="p-1 text-neutral-300 hover:text-white"
                         >
-                          <Plus size={12} />
+                          <Plus size={14} />
                         </button>
                       </div>
 
-                      <span className="text-sm font-mono font-extrabold text-amber-400 min-w-[45px] text-right">
+                      <span className="text-base font-mono font-black text-amber-400 min-w-[50px] text-right">
                         ฿{item.total}
                       </span>
 
@@ -1373,7 +1381,7 @@ function CustomerView({
                         onClick={() => removeFromCart(item.cartId)}
                         className="p-1 text-neutral-500 hover:text-rose-400"
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
@@ -1384,7 +1392,7 @@ function CustomerView({
             {cart.length > 0 && (
               <div className="pt-4 border-t border-white/10 mt-auto">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-neutral-400">
+                  <span className="text-base font-bold text-neutral-300">
                     ราคารวมทั้งหมด
                   </span>
                   <span className="text-2xl font-mono font-black text-amber-400">
@@ -1392,8 +1400,8 @@ function CustomerView({
                   </span>
                 </div>
 
-                <div className="mb-4 text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                  <Award size={14} /> จะได้รับคะแนนสะสม: +{cartTotal / 10} คะแนน
+                <div className="mb-4 text-xs sm:text-sm text-emerald-400 font-bold flex items-center gap-1.5">
+                  <Award size={16} /> จะได้รับคะแนนสะสม: +{cartTotal / 10} คะแนน
                 </div>
 
                 <button
@@ -1402,13 +1410,13 @@ function CustomerView({
                     submitCartOrder();
                     setIsCartOpen(false);
                   }}
-                  className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-extrabold text-base transition-transform shadow-lg ${
+                  className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-extrabold text-lg transition-transform shadow-lg ${
                     shopOpen
                       ? 'bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black active:scale-[0.98] shadow-[0_0_25px_-5px_rgba(245,158,11,0.6)]'
                       : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
                   }`}
                 >
-                  <Send size={18} />{' '}
+                  <Send size={20} />{' '}
                   {shopOpen
                     ? 'ส่งออเดอร์ · Send Order'
                     : 'ร้านปิดอยู่ (Closed)'}
@@ -1434,15 +1442,15 @@ function MenuButton({
   return (
     <button
       onClick={onClick}
-      className={`text-left rounded-2xl p-3.5 border ${bt.grad} active:scale-[0.97] transition-all min-h-[96px] flex flex-col justify-between`}
+      className={`text-left rounded-2xl p-4 border ${bt.grad} active:scale-[0.97] transition-all min-h-[105px] flex flex-col justify-between`}
     >
       <div>
-        <p className={`text-base sm:text-lg leading-tight ${bt.text}`}>
-          {item.name}
+        <p className={`text-lg sm:text-xl font-black leading-tight ${bt.text}`}>
+          {item.nameTh}
         </p>
-        <p className={`text-xs mt-0.5 ${bt.sub}`}>{item.nameTh}</p>
+        <p className={`text-xs mt-0.5 opacity-90 ${bt.sub}`}>{item.name}</p>
       </div>
-      <p className={`text-sm mt-2 font-mono ${bt.price}`}>฿{item.price}</p>
+      <p className={`text-base mt-2 font-mono ${bt.price}`}>฿{item.price}</p>
     </button>
   );
 }
@@ -1474,30 +1482,30 @@ function CustomizeModal({
         className="absolute inset-0 bg-black/75 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative w-full sm:max-w-sm bg-[#0D1117] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto shadow-[0_0_60px_-10px_rgba(0,0,0,0.9)]">
+      <div className="relative w-full sm:max-w-md bg-[#0D1117] border border-white/10 rounded-t-3xl sm:rounded-3xl p-6 max-h-[92vh] overflow-y-auto shadow-[0_0_60px_-10px_rgba(0,0,0,0.9)]">
         <div className="flex items-start justify-between mb-1">
           <div>
-            <h3 className="text-lg font-bold text-white">{item.name}</h3>
-            <p className="text-xs text-neutral-400">{item.nameTh}</p>
+            <h3 className="text-2xl font-black text-white">{item.nameTh}</h3>
+            <p className="text-xs text-neutral-400 font-medium">{item.name}</p>
           </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
-        <span className="inline-block mt-2 text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300">
+        <span className="inline-block mt-2 text-xs font-mono font-bold px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300">
           ฿{item.price} / แก้ว
         </span>
 
-        <div className="mt-5">
+        <div className="mt-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-neutral-300">
+            <span className="text-sm font-bold text-neutral-200">
               ระดับความหวาน · Sweetness
             </span>
             <span
-              className={`font-mono font-bold text-lg ${sweetnessColor(
+              className={`font-mono font-extrabold text-xl ${sweetnessColor(
                 sweetness
               )}`}
             >
@@ -1511,59 +1519,60 @@ function CustomizeModal({
             step={5}
             value={sweetness}
             onChange={(e) => setSweetness(Number(e.target.value))}
-            className="w-full accent-amber-400 h-2 bg-white/10 rounded-lg cursor-pointer"
+            className="w-full accent-amber-400 h-2.5 bg-white/10 rounded-lg cursor-pointer"
           />
-          <div className="flex flex-wrap gap-1.5 mt-3">
+          <div className="flex flex-wrap gap-1.5 mt-3.5">
             {SWEET_PRESETS.map((p) => (
               <button
                 key={p.value}
                 onClick={() => setSweetness(p.value)}
-                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-medium border transition-colors ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
                   sweetness === p.value
-                    ? 'bg-amber-400 border-amber-400 text-black font-bold'
-                    : 'bg-white/[0.03] border-white/10 text-neutral-300 hover:border-white/30'
+                    ? 'bg-amber-400 border-amber-400 text-black font-black'
+                    : 'bg-white/[0.03] border-white/10 text-neutral-200 hover:border-white/30'
                 }`}
               >
-                {p.label} <span className="opacity-70">{p.labelTh}</span>
+                {p.label}{' '}
+                <span className="text-xs opacity-80">{p.labelTh}</span>
               </button>
             ))}
           </div>
         </div>
 
-        <div className="mt-5 flex items-center justify-between">
-          <span className="text-xs font-semibold text-neutral-300">
+        <div className="mt-6 flex items-center justify-between">
+          <span className="text-sm font-bold text-neutral-200">
             จำนวน · Quantity
           </span>
-          <div className="flex items-center gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-2 py-1">
+          <div className="flex items-center gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-2.5 py-1.5">
             <button
               onClick={() => setQty(Math.max(1, qty - 1))}
               className="p-1 text-neutral-300 hover:text-white"
             >
-              <Minus size={14} />
+              <Minus size={16} />
             </button>
-            <span className="w-5 text-center font-mono text-sm font-bold">
+            <span className="w-6 text-center font-mono text-base font-bold">
               {qty}
             </span>
             <button
               onClick={() => setQty(Math.min(20, qty + 1))}
               className="p-1 text-neutral-300 hover:text-white"
             >
-              <Plus size={14} />
+              <Plus size={16} />
             </button>
           </div>
         </div>
 
-        <div className="mt-6 flex items-center justify-between text-sm">
-          <span className="text-neutral-400">ราคารวม</span>
-          <span className="font-mono font-black text-xl text-amber-400">
+        <div className="mt-6 flex items-center justify-between text-base">
+          <span className="text-neutral-300 font-bold">ราคารวม</span>
+          <span className="font-mono font-black text-2xl text-amber-400">
             ฿{total}
           </span>
         </div>
         <button
           onClick={onAddToCart}
-          className="mt-3 w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-extrabold text-sm active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(245,158,11,0.6)]"
+          className="mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-black text-base active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(245,158,11,0.6)]"
         >
-          <Plus size={18} /> เพิ่มลงตะกร้า
+          <Plus size={20} /> เพิ่มลงตะกร้า
         </button>
       </div>
     </div>
@@ -1648,48 +1657,48 @@ function BaristaView({
     <div className="max-w-7xl mx-auto px-4 pb-16">
       <div className="pt-6 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <Coffee size={22} className="text-teal-400" /> Cof N&apos; Rob —
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Coffee size={24} className="text-teal-400" /> Cof N&apos; Rob —
             Barista Display Dashboard
           </h1>
-          <p className="text-xs text-neutral-400 mt-1 flex items-center gap-1.5">
-            <Radio size={12} className="text-emerald-400 animate-pulse" /> Live
+          <p className="text-sm font-medium text-neutral-300 mt-1 flex items-center gap-1.5">
+            <Radio size={14} className="text-emerald-400 animate-pulse" /> Live
             feed synced with customer terminals
           </p>
         </div>
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-3 text-sm">
           <button
             onClick={toggleShopStatus}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold border transition-all ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-extrabold border transition-all ${
               shopOpen
                 ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
                 : 'bg-rose-500/20 border-rose-400/50 text-rose-300 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
             }`}
           >
             <span
-              className={`w-2 h-2 rounded-full ${
+              className={`w-2.5 h-2.5 rounded-full ${
                 shopOpen ? 'bg-emerald-400 animate-ping' : 'bg-rose-400'
               }`}
             />
             {shopOpen ? 'เปิดร้านอยู่ (Open)' : 'ปิดร้านแล้ว (Closed)'}
           </button>
 
-          <span className="font-mono text-neutral-300 flex items-center gap-1.5 bg-white/[0.04] px-3 py-1.5 rounded-lg border border-white/10">
-            <Clock size={14} /> {fmtClock(clock)}
+          <span className="font-mono text-neutral-200 flex items-center gap-1.5 bg-white/[0.04] px-3.5 py-2 rounded-xl border border-white/10">
+            <Clock size={16} /> {fmtClock(clock)}
           </span>
           <button
             onClick={() => setSoundOn(!soundOn)}
             title={soundOn ? 'ปิดเสียง' : 'เปิดเสียง'}
-            className="p-2 rounded-lg bg-white/[0.04] border border-white/10 text-neutral-300 hover:text-white"
+            className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-neutral-300 hover:text-white"
           >
-            {soundOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
           </button>
         </div>
       </div>
 
       <div className="mt-4 p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col sm:flex-row items-center gap-3">
         <div className="flex-1 w-full">
-          <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+          <label className="block text-sm font-bold text-neutral-300 mb-1.5">
             ข้อความแจ้งหน้าร้านเมื่อปิด (เช่น ปิด 3 วัน, ปิดให้บริการชั่วคราว
             ฯลฯ)
           </label>
@@ -1699,11 +1708,11 @@ function BaristaView({
               value={tempMsg}
               onChange={(e) => setTempMsg(e.target.value)}
               placeholder="ระบุรายละเอียดการปิดร้าน..."
-              className="flex-1 rounded-xl bg-white/[0.04] border border-white/10 px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="flex-1 rounded-xl bg-white/[0.04] border border-white/10 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
             />
             <button
               onClick={() => updateShopMessage(tempMsg)}
-              className="px-4 py-2 rounded-xl bg-teal-500 text-black text-xs font-bold hover:bg-teal-400 transition-colors shrink-0"
+              className="px-4 py-2.5 rounded-xl bg-teal-500 text-black text-sm font-bold hover:bg-teal-400 transition-colors shrink-0"
             >
               บันทึกข้อความ
             </button>
@@ -1712,49 +1721,49 @@ function BaristaView({
       </div>
 
       {/* Barista Nav Tabs */}
-      <div className="flex flex-wrap items-center gap-1 p-1 mt-5 rounded-xl bg-white/[0.04] border border-white/10 w-fit">
+      <div className="flex flex-wrap items-center gap-1.5 p-1.5 mt-5 rounded-2xl bg-white/[0.04] border border-white/10 w-fit">
         <button
           onClick={() => setBaristaTab('orders')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
             baristaTab === 'orders'
               ? 'bg-teal-400 text-black'
-              : 'text-neutral-400 hover:text-neutral-200'
+              : 'text-neutral-300 hover:text-neutral-100'
           }`}
         >
-          <ListChecks size={15} /> Live Orders & History
+          <ListChecks size={16} /> Live Orders & History
         </button>
 
         <button
           onClick={() => setBaristaTab('points')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
             baristaTab === 'points'
               ? 'bg-amber-400 text-black'
-              : 'text-neutral-400 hover:text-neutral-200'
+              : 'text-neutral-300 hover:text-neutral-100'
           }`}
         >
-          <Award size={15} /> จัดการแต้มสะสม (Add / Redeem Points)
+          <Award size={16} /> จัดการแต้มสะสม (Add / Redeem Points)
         </button>
 
         <button
           onClick={() => setBaristaTab('stock')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
             baristaTab === 'stock'
               ? 'bg-teal-400 text-black'
-              : 'text-neutral-400 hover:text-neutral-200'
+              : 'text-neutral-300 hover:text-neutral-100'
           }`}
         >
-          <Settings2 size={15} /> Hide / Show Menu
+          <Settings2 size={16} /> Hide / Show Menu
         </button>
 
         <button
           onClick={() => setBaristaTab('editor')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
             baristaTab === 'editor'
               ? 'bg-teal-400 text-black'
-              : 'text-neutral-400 hover:text-neutral-200'
+              : 'text-neutral-300 hover:text-neutral-100'
           }`}
         >
-          <Pencil size={15} /> Edit Menu & Prices
+          <Pencil size={16} /> Edit Menu & Prices
         </button>
       </div>
 
@@ -1864,23 +1873,23 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
   return (
     <div className="mt-6 max-w-xl">
       <div className="p-6 rounded-3xl bg-[#0D1117] border border-amber-400/30 shadow-xl">
-        <h2 className="text-lg font-black text-amber-400 flex items-center gap-2 mb-1">
-          <Award size={20} /> ระบบจัดการแต้มสะสมสมาชิก (Manage Points)
+        <h2 className="text-xl font-black text-amber-400 flex items-center gap-2 mb-1">
+          <Award size={22} /> ระบบจัดการแต้มสะสมสมาชิก (Manage Points)
         </h2>
-        <p className="text-xs text-neutral-400 mb-6">
+        <p className="text-sm font-semibold text-neutral-300 mb-6">
           สำหรับบาริสต้าใช้เพิ่มแต้มอิสระ
           หรือตัดคะแนนสะสมเมื่อลูกค้านำแต้มมาแลกส่วนลด
         </p>
 
         <div className="space-y-2 mb-6">
-          <label className="text-xs font-bold text-neutral-300 block">
+          <label className="text-sm font-bold text-neutral-200 block">
             ค้นหารหัสสมาชิก (เบอร์โทร 4 ตัวท้าย)
           </label>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Phone
-                size={16}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500"
+                size={18}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
               />
               <input
                 type="text"
@@ -1892,15 +1901,15 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
                 }}
                 maxLength={4}
                 placeholder="เช่น 1234"
-                className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-sm font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-base font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
               />
             </div>
             <button
               onClick={handleSearch}
               disabled={isSearching}
-              className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-black text-xs font-extrabold rounded-xl transition-all flex items-center gap-1.5 shrink-0"
+              className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-black text-sm font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0"
             >
-              <Search size={15} /> ค้นหา
+              <Search size={16} /> ค้นหา
             </button>
           </div>
         </div>
@@ -1909,20 +1918,20 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
           <div className="pt-5 border-t border-white/10 space-y-6 animate-fadeIn">
             <div className="p-4 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-between">
               <div>
-                <span className="text-xs text-neutral-400 block font-semibold">
+                <span className="text-sm text-neutral-300 block font-bold">
                   สมาชิกหมายเลข
                 </span>
-                <span className="text-lg font-black text-white font-mono">
+                <span className="text-xl font-black text-white font-mono">
                   #{member.phone4}
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-xs text-amber-300/80 block font-semibold">
+                <span className="text-sm text-amber-300 block font-bold">
                   คะแนนสะสมคงเหลือ
                 </span>
                 <span className="text-2xl font-black text-amber-400 font-mono">
                   {member.points}{' '}
-                  <span className="text-xs font-normal text-amber-200">
+                  <span className="text-sm font-semibold text-amber-200">
                     แต้ม
                   </span>
                 </span>
@@ -1930,8 +1939,8 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
             </div>
 
             <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-3">
-              <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                <PlusCircle size={15} /> บวกแต้มสะสมเพิ่ม (Add Points)
+              <label className="text-sm font-bold text-emerald-300 flex items-center gap-1.5">
+                <PlusCircle size={16} /> บวกแต้มสะสมเพิ่ม (Add Points)
               </label>
               <div className="flex items-center gap-3">
                 <input
@@ -1941,9 +1950,11 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
                   onChange={(e) =>
                     setPointsToAdd(Math.max(1, Number(e.target.value)))
                   }
-                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-base font-mono font-bold text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-lg font-mono font-bold text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-400"
                 />
-                <span className="text-xs text-neutral-400">คะแนน</span>
+                <span className="text-sm font-bold text-neutral-300">
+                  คะแนน
+                </span>
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
@@ -1951,7 +1962,7 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
                   <button
                     key={pts}
                     onClick={() => setPointsToAdd(pts)}
-                    className="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300"
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300"
                   >
                     +{pts} แต้ม
                   </button>
@@ -1960,16 +1971,16 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
 
               <button
                 onClick={handleAddPoints}
-                className="w-full py-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-[0.98]"
+                className="w-full py-3 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-[0.98]"
               >
-                <PlusCircle size={16} /> ยืนยันการเพิ่มคะแนน (+{pointsToAdd}{' '}
+                <PlusCircle size={18} /> ยืนยันการเพิ่มคะแนน (+{pointsToAdd}{' '}
                 แต้ม)
               </button>
             </div>
 
             <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 space-y-3">
-              <label className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
-                <MinusCircle size={15} /> หัก / แลกคะแนนออก (Redeem Points)
+              <label className="text-sm font-bold text-rose-300 flex items-center gap-1.5">
+                <MinusCircle size={16} /> หัก / แลกคะแนนออก (Redeem Points)
               </label>
               <div className="flex items-center gap-3">
                 <input
@@ -1980,9 +1991,11 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
                   onChange={(e) =>
                     setPointsToDeduct(Math.max(1, Number(e.target.value)))
                   }
-                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-base font-mono font-bold text-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-lg font-mono font-bold text-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400"
                 />
-                <span className="text-xs text-neutral-400">คะแนน</span>
+                <span className="text-sm font-bold text-neutral-300">
+                  คะแนน
+                </span>
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
@@ -1990,7 +2003,7 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
                   <button
                     key={pts}
                     onClick={() => setPointsToDeduct(pts)}
-                    className="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300"
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300"
                   >
                     -{pts} แต้ม
                   </button>
@@ -2000,13 +2013,13 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
               <button
                 onClick={handleDeductPoints}
                 disabled={member.points <= 0}
-                className={`w-full py-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 ${
+                className={`w-full py-3 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-1.5 ${
                   member.points > 0
                     ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]'
                     : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
                 }`}
               >
-                <MinusCircle size={16} /> ยืนยันการหัก/ตัดคะแนน (-
+                <MinusCircle size={18} /> ยืนยันการหัก/ตัดคะแนน (-
                 {pointsToDeduct} แต้ม)
               </button>
             </div>
@@ -2028,10 +2041,10 @@ function StatChip({
 }) {
   return (
     <div className="px-4 py-2.5 rounded-2xl bg-[#0D1117] border border-white/10 flex flex-col items-center min-w-[90px]">
-      <span className={`font-mono font-extrabold text-xl ${color}`}>
+      <span className={`font-mono font-extrabold text-2xl ${color}`}>
         {value}
       </span>
-      <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold">
+      <span className="text-xs text-neutral-300 font-bold uppercase tracking-wider">
         {label}
       </span>
     </div>
@@ -2129,15 +2142,15 @@ function OrdersFeed({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 bg-white/[0.04] p-1.5 rounded-xl border border-white/10 text-xs">
-          <span className="text-neutral-400 px-2 flex items-center gap-1 font-semibold">
-            <Calendar size={13} className="text-amber-400" /> ตัวกรองประวัติ:
+          <span className="text-neutral-300 px-2 flex items-center gap-1 font-bold">
+            <Calendar size={14} className="text-amber-400" /> ตัวกรองประวัติ:
           </span>
           <button
             onClick={() => setHistoryFilter('today')}
             className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
               historyFilter === 'today'
                 ? 'bg-amber-400 text-black shadow-md'
-                : 'text-neutral-400 hover:text-white'
+                : 'text-neutral-300 hover:text-white'
             }`}
           >
             วันนี้
@@ -2147,7 +2160,7 @@ function OrdersFeed({
             className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
               historyFilter === 'yesterday'
                 ? 'bg-amber-400 text-black shadow-md'
-                : 'text-neutral-400 hover:text-white'
+                : 'text-neutral-300 hover:text-white'
             }`}
           >
             เมื่อวาน
@@ -2157,7 +2170,7 @@ function OrdersFeed({
             className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
               historyFilter === 'custom'
                 ? 'bg-amber-400 text-black shadow-md'
-                : 'text-neutral-400 hover:text-white'
+                : 'text-neutral-300 hover:text-white'
             }`}
           >
             เลือกวันเอง
@@ -2167,7 +2180,7 @@ function OrdersFeed({
             className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
               historyFilter === 'all'
                 ? 'bg-amber-400 text-black shadow-md'
-                : 'text-neutral-400 hover:text-white'
+                : 'text-neutral-300 hover:text-white'
             }`}
           >
             ทั้งหมด
@@ -2184,12 +2197,12 @@ function OrdersFeed({
         </div>
       </div>
 
-      <h2 className="text-sm font-bold text-amber-300 uppercase tracking-wider mb-3 flex items-center gap-2">
-        <Clock size={16} /> ออเดอร์ที่กำลังรอทำ (Active Pending Orders)
+      <h2 className="text-base font-extrabold text-amber-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+        <Clock size={18} /> ออเดอร์ที่กำลังรอทำ (Active Pending Orders)
       </h2>
 
       {activeOrders.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl text-neutral-500 text-sm mb-8">
+        <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl text-neutral-400 text-base font-bold mb-8">
           ไม่มีออเดอร์ค้างอยู่ในขณะนี้
         </div>
       ) : (
@@ -2205,12 +2218,12 @@ function OrdersFeed({
         </div>
       )}
 
-      <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-wider mb-3 flex items-center gap-2 pt-4 border-t border-white/10">
-        <Calendar size={16} /> ประวัติออเดอร์ย้อนหลัง (Order History Log)
+      <h2 className="text-base font-extrabold text-neutral-300 uppercase tracking-wider mb-3 flex items-center gap-2 pt-4 border-t border-white/10">
+        <Calendar size={18} /> ประวัติออเดอร์ย้อนหลัง (Order History Log)
       </h2>
 
       {filteredHistory.length === 0 ? (
-        <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-neutral-500 text-xs">
+        <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-neutral-400 text-sm font-bold">
           ไม่พบประวัติออเดอร์ในช่วงเวลาที่เลือก
         </div>
       ) : (
@@ -2266,24 +2279,24 @@ function OrderCard({
     >
       <div className="relative flex items-start justify-between border-b border-white/5 pb-2.5">
         <div>
-          <span className="font-mono text-xs text-neutral-500">
+          <span className="font-mono text-xs text-neutral-400 font-bold">
             #{order.id.slice(-5)}
           </span>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <User size={14} className="text-amber-400" />
-            <span className="font-bold text-sm text-white truncate max-w-[140px]">
+            <User size={16} className="text-amber-400" />
+            <span className="font-extrabold text-base text-white truncate max-w-[140px]">
               {order.customerName}
             </span>
           </div>
           {order.memberPhoneCode && (
-            <span className="inline-block mt-1 text-[10px] font-mono font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+            <span className="inline-block mt-1 text-xs font-mono font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
               สมาชิก #{order.memberPhoneCode} (+
               {order.earnedPoints || order.total / 10} แต้ม)
             </span>
           )}
         </div>
         <span
-          className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${statusMeta.cls}`}
+          className={`text-xs font-black px-2.5 py-1 rounded-full border ${statusMeta.cls}`}
         >
           {statusMeta.label}
         </span>
@@ -2293,18 +2306,18 @@ function OrderCard({
         {order.items.map((item, idx) => (
           <div key={idx} className="flex justify-between items-start text-xs">
             <div>
-              <p className="font-bold text-white">
+              <p className="font-black text-base text-white">
                 {item.qty > 1 ? `${item.qty}× ` : ''}
-                {item.name}
+                {item.nameTh}
               </p>
-              <p className="text-[11px] text-neutral-400">
-                {item.nameTh} · หวาน{' '}
-                <span className={sweetnessColor(item.sweetness)}>
+              <p className="text-xs text-neutral-300 font-medium">
+                {item.name} · หวาน{' '}
+                <span className={`font-bold ${sweetnessColor(item.sweetness)}`}>
                   {item.sweetness}%
                 </span>
               </p>
             </div>
-            <span className="font-mono text-neutral-300 font-semibold">
+            <span className="font-mono text-neutral-200 font-extrabold text-sm">
               ฿{item.total}
             </span>
           </div>
@@ -2312,11 +2325,11 @@ function OrderCard({
       </div>
 
       <div className="relative mt-4 pt-2 border-t border-white/5 flex items-center justify-between text-xs">
-        <span className="font-mono font-extrabold text-amber-400 text-sm">
+        <span className="font-mono font-black text-amber-400 text-base">
           รวม ฿{order.total}
         </span>
-        <span className="flex items-center gap-1 text-[11px] text-neutral-500">
-          <Clock size={11} />{' '}
+        <span className="flex items-center gap-1 text-xs text-neutral-400 font-medium">
+          <Clock size={12} />{' '}
           {isHistory ? fmtDate(order.createdAt) : timeAgo(order.createdAt, now)}
         </span>
       </div>
@@ -2325,15 +2338,15 @@ function OrderCard({
         <div className="relative mt-4 flex gap-2">
           <button
             onClick={() => advanceOrder(order.id, 'cancelled')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-rose-500/15 border border-rose-400/40 text-rose-300 text-xs font-bold hover:bg-rose-500/25 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-rose-500/15 border border-rose-400/40 text-rose-300 text-xs font-extrabold hover:bg-rose-500/25 transition-colors"
           >
-            <XCircle size={14} /> Cancel / ยกเลิก
+            <XCircle size={15} /> Cancel / ยกเลิก
           </button>
           <button
             onClick={() => advanceOrder(order.id, 'done')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 text-xs font-bold hover:bg-emerald-500/25 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 text-xs font-extrabold hover:bg-emerald-500/25 transition-colors"
           >
-            <CheckCircle2 size={14} /> Done & เพิ่มแต้ม
+            <CheckCircle2 size={15} /> Done & เพิ่มแต้ม
           </button>
         </div>
       )}
@@ -2357,9 +2370,10 @@ function StockControl({
 
   return (
     <div className="mt-6">
-      <p className="text-xs text-neutral-400 mb-4 flex items-center gap-1.5">
-        <Zap size={14} className="text-teal-400" /> หากปิดการใช้งานเมนูใด
-        ระบบจะทำการ **ซ่อนเมนูนานั้น** ออกจากหน้าของลูกค้าทันที
+      <p className="text-sm font-semibold text-neutral-300 mb-4 flex items-center gap-1.5">
+        <Zap size={16} className="text-teal-400" /> หากปิดการใช้งานเมนูใด
+        ระบบจะทำการ <strong className="text-amber-300">ซ่อนเมนูนานั้น</strong>{' '}
+        ออกจากหน้าของลูกค้าทันที
       </p>
       {categories.map((cat) => {
         const meta = CATEGORY_META[cat];
@@ -2368,11 +2382,15 @@ function StockControl({
         return (
           <div key={cat} className="mb-6">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-teal-400/10 border border-teal-400/30 text-teal-300">
-                <Icon size={14} />
+              <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-teal-400/10 border border-teal-400/30 text-teal-300">
+                <Icon size={16} />
               </span>
-              <h2 className="text-sm font-bold text-white">{meta.label}</h2>
-              <span className="text-xs text-neutral-500">({meta.labelTh})</span>
+              <h2 className="text-base font-extrabold text-white">
+                {meta.labelTh}
+              </h2>
+              <span className="text-xs text-neutral-400 font-mono">
+                ({meta.label})
+              </span>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {items.map((item) => (
@@ -2386,16 +2404,16 @@ function StockControl({
                 >
                   <div className="min-w-0">
                     <p
-                      className={`text-sm font-bold truncate ${
+                      className={`text-base font-black truncate ${
                         item.available
                           ? 'text-white'
                           : 'text-neutral-500 line-through'
                       }`}
                     >
-                      {item.name}
-                    </p>
-                    <p className="text-xs text-neutral-400 truncate">
                       {item.nameTh}
+                    </p>
+                    <p className="text-xs text-neutral-400 font-medium truncate">
+                      {item.name}
                     </p>
                   </div>
                   <button
@@ -2442,15 +2460,15 @@ function MenuEditor({
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <p className="text-xs text-neutral-400 flex items-center gap-1.5">
-          <Pencil size={14} className="text-teal-400" />{' '}
+        <p className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
+          <Pencil size={16} className="text-teal-400" />{' '}
           คลิกที่เมนูเพื่อแก้ไข/ลบ หรือคลิกปุ่มเพิ่มเมนูเพื่อสร้างรายการใหม่
         </p>
         <button
           onClick={() => setIsAddingNew(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-extrabold text-xs shadow-[0_0_15px_rgba(45,212,191,0.4)] transition-all active:scale-[0.98]"
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-extrabold text-sm shadow-[0_0_15px_rgba(45,212,191,0.4)] transition-all active:scale-[0.98]"
         >
-          <Plus size={16} /> เพิ่มเมนูใหม่ (Add New Menu)
+          <Plus size={18} /> เพิ่มเมนูใหม่ (Add New Menu)
         </button>
       </div>
 
@@ -2461,11 +2479,15 @@ function MenuEditor({
         return (
           <div key={cat} className="mb-6">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-teal-400/10 border border-teal-400/30 text-teal-300">
-                <Icon size={14} />
+              <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-teal-400/10 border border-teal-400/30 text-teal-300">
+                <Icon size={16} />
               </span>
-              <h2 className="text-sm font-bold text-white">{meta.label}</h2>
-              <span className="text-xs text-neutral-500">({meta.labelTh})</span>
+              <h2 className="text-base font-extrabold text-white">
+                {meta.labelTh}
+              </h2>
+              <span className="text-xs text-neutral-400 font-mono">
+                ({meta.label})
+              </span>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {items.map((item) => (
@@ -2475,17 +2497,17 @@ function MenuEditor({
                   className="text-left flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#0D1117] p-3.5 hover:border-teal-400/50 transition-colors"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-white truncate">
-                      {item.name}
-                    </p>
-                    <p className="text-xs text-neutral-400 truncate">
+                    <p className="text-base font-black text-white truncate">
                       {item.nameTh}
                     </p>
-                    <p className="text-xs font-mono font-black text-amber-400 mt-1">
+                    <p className="text-xs text-neutral-400 font-medium truncate">
+                      {item.name}
+                    </p>
+                    <p className="text-sm font-mono font-black text-amber-400 mt-1">
                       ฿{item.price}
                     </p>
                   </div>
-                  <Pencil size={16} className="shrink-0 text-neutral-500" />
+                  <Pencil size={18} className="shrink-0 text-neutral-400" />
                 </button>
               ))}
             </div>
@@ -2567,14 +2589,14 @@ function MenuEditModal({
       />
       <div className="relative w-full sm:max-w-md bg-[#0D1117] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto shadow-2xl">
         <div className="flex items-start justify-between mb-4">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
             {isNew ? (
               <>
-                <Plus size={18} className="text-teal-400" /> เพิ่มเมนูใหม่
+                <Plus size={20} className="text-teal-400" /> เพิ่มเมนูใหม่
               </>
             ) : (
               <>
-                <Pencil size={16} className="text-teal-400" /> แก้ไขเมนู
+                <Pencil size={18} className="text-teal-400" /> แก้ไขเมนู
               </>
             )}
           </h3>
@@ -2582,9 +2604,19 @@ function MenuEditModal({
             onClick={onClose}
             className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
+
+        <label className="block text-sm font-bold text-neutral-200 mb-1.5">
+          ชื่อภาษาไทย (Thai Name)
+        </label>
+        <input
+          value={nameTh}
+          onChange={(e) => setNameTh(e.target.value)}
+          placeholder="เช่น เอสเพรสโซ่เย็น"
+          className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-3.5 py-2.5 text-base font-bold text-amber-300 mb-4 focus:outline-none focus:ring-2 focus:ring-teal-400"
+        />
 
         <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
           ชื่อภาษาอังกฤษ (English Name)
@@ -2593,16 +2625,6 @@ function MenuEditModal({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Iced Espresso"
-          className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-3.5 py-2.5 text-sm text-white mb-4 focus:outline-none focus:ring-2 focus:ring-teal-400"
-        />
-
-        <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
-          ชื่อภาษาไทย (Thai Name)
-        </label>
-        <input
-          value={nameTh}
-          onChange={(e) => setNameTh(e.target.value)}
-          placeholder="เช่น เอสเพรสโซ่เย็น"
           className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-3.5 py-2.5 text-sm text-white mb-4 focus:outline-none focus:ring-2 focus:ring-teal-400"
         />
 
@@ -2621,7 +2643,7 @@ function MenuEditModal({
                 else if (cat === 'MATCHA & TEA') setTheme('green');
                 else setTheme('gray');
               }}
-              className="w-full rounded-xl bg-[#161B22] border border-white/10 px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full rounded-xl bg-[#161B22] border border-white/10 px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
             >
               {categories.map((c) => (
                 <option key={c} value={c}>
@@ -2638,7 +2660,7 @@ function MenuEditModal({
             <select
               value={theme}
               onChange={(e) => setTheme(e.target.value as ThemeType)}
-              className="w-full rounded-xl bg-[#161B22] border border-white/10 px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full rounded-xl bg-[#161B22] border border-white/10 px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
             >
               {themeOptions.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -2649,46 +2671,46 @@ function MenuEditModal({
           </div>
         </div>
 
-        <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+        <label className="block text-sm font-bold text-neutral-200 mb-1.5">
           ราคา (บาท)
         </label>
         <div className="relative mb-4">
           <Tag
-            size={14}
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500"
+            size={16}
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
           />
           <input
             type="number"
             min={0}
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            className="w-full rounded-xl bg-white/[0.04] border border-white/10 pl-10 pr-3.5 py-2.5 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+            className="w-full rounded-xl bg-white/[0.04] border border-white/10 pl-10 pr-3.5 py-2.5 text-base font-mono font-extrabold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
           />
         </div>
 
-        <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+        <label className="block text-sm font-bold text-neutral-200 mb-1.5">
           สถานะแสดงเมนู
         </label>
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setAvailable(true)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border transition-colors ${
               available
                 ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
-                : 'bg-white/[0.03] border-white/10 text-neutral-500'
+                : 'bg-white/[0.03] border-white/10 text-neutral-400'
             }`}
           >
-            <CheckCircle2 size={14} /> แสดงเมนู
+            <CheckCircle2 size={16} /> แสดงเมนู
           </button>
           <button
             onClick={() => setAvailable(false)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border transition-colors ${
               !available
                 ? 'bg-rose-500/20 border-rose-400/50 text-rose-300'
-                : 'bg-white/[0.03] border-white/10 text-neutral-500'
+                : 'bg-white/[0.03] border-white/10 text-neutral-400'
             }`}
           >
-            <EyeOff size={14} /> ซ่อนเมนู
+            <EyeOff size={16} /> ซ่อนเมนู
           </button>
         </div>
 
@@ -2696,28 +2718,32 @@ function MenuEditModal({
           {!isNew && item && onDelete && (
             <button
               onClick={() => {
-                if (confirm(`คุณต้องการลบเมนู "${item.name}" ใช่หรือไม่?`)) {
+                if (
+                  confirm(
+                    `คุณต้องการลบเมนู "${item.nameTh || item.name}" ใช่หรือไม่?`
+                  )
+                ) {
                   onDelete(item.id);
                 }
               }}
               className="flex items-center justify-center p-3 rounded-2xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/40 text-rose-300 transition-colors"
               title="ลบเมนูนี้"
             >
-              <Trash2 size={18} />
+              <Trash2 size={20} />
             </button>
           )}
 
           <button
             onClick={handleSubmit}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-teal-400 to-teal-300 text-black font-extrabold text-sm active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(45,212,191,0.6)]"
+            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-gradient-to-r from-teal-400 to-teal-300 text-black font-black text-base active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(45,212,191,0.6)]"
           >
             {isNew ? (
               <>
-                <Plus size={18} /> สร้างเมนูใหม่
+                <Plus size={20} /> สร้างเมนูใหม่
               </>
             ) : (
               <>
-                <Save size={16} /> บันทึกการเปลี่ยนแปลง
+                <Save size={18} /> บันทึกการเปลี่ยนแปลง
               </>
             )}
           </button>
