@@ -45,6 +45,8 @@ import {
   PlusCircle,
   Search,
   Users,
+  Gift,
+  UserX,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -707,6 +709,56 @@ export default function App() {
     setModalItem(null);
   }
 
+  function handleInstantOrder() {
+    if (!shopOpen) {
+      setToast('ร้านปิดอยู่ ไม่สามารถส่งออเดอร์ได้');
+      return;
+    }
+    if (!modalItem) return;
+
+    const trimmedPhone = memberPhoneCode.trim();
+    const isMember = trimmedPhone.length === 4;
+    const totalAmount = modalItem.price * qty;
+    const earnedPoints = isMember ? totalAmount / 10 : 0;
+
+    const singleItem: CartItem = {
+      cartId: `${modalItem.id}-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2, 6)}`,
+      itemId: modalItem.id,
+      name: modalItem.name,
+      nameTh: modalItem.nameTh,
+      theme: modalItem.theme,
+      sweetness,
+      qty,
+      unitPrice: modalItem.price,
+      total: totalAmount,
+    };
+
+    const newOrderData = {
+      customerName: isMember ? `สมาชิก #${trimmedPhone}` : 'Guest',
+      memberPhoneCode: isMember ? trimmedPhone : '',
+      earnedPoints: earnedPoints,
+      pointsProcessed: false,
+      items: [singleItem],
+      total: totalAmount,
+      createdAt: Date.now(),
+      status: 'pending',
+    };
+
+    const ordersRef = ref(db, 'orders');
+    const newOrderRef = push(ordersRef);
+    set(newOrderRef, newOrderData);
+
+    setToast(
+      isMember
+        ? `สั่งทันทีเรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้ากดรับ/ทำเสร็จ)`
+        : 'สั่งทันทีเรียบร้อย! (รายการของ Guest)'
+    );
+    setModalItem(null);
+    sound.playSent();
+  }
+
   function removeFromCart(cartId: string) {
     setCart((prev) => prev.filter((i) => i.cartId !== cartId));
   }
@@ -739,17 +791,13 @@ export default function App() {
     if (cart.length === 0) return;
 
     const trimmedPhone = memberPhoneCode.trim();
-    if (!trimmedPhone || trimmedPhone.length !== 4) {
-      setToast('กรุณากรอกรหัสสมาชิก 4 ตัวท้ายให้ถูกต้องก่อนสั่งซื้อ');
-      return;
-    }
-
+    const isMember = trimmedPhone.length === 4;
     const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
-    const earnedPoints = totalAmount / 10;
+    const earnedPoints = isMember ? totalAmount / 10 : 0;
 
     const newOrderData = {
-      customerName: `สมาชิก #${trimmedPhone}`,
-      memberPhoneCode: trimmedPhone,
+      customerName: isMember ? `สมาชิก #${trimmedPhone}` : 'Guest',
+      memberPhoneCode: isMember ? trimmedPhone : '',
       earnedPoints: earnedPoints,
       pointsProcessed: false,
       items: cart,
@@ -763,7 +811,9 @@ export default function App() {
     set(newOrderRef, newOrderData);
 
     setToast(
-      `ส่งออเดอร์เรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้ากดรับ/ทำเสร็จ)`
+      isMember
+        ? `ส่งออเดอร์เรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้ากดรับ/ทำเสร็จ)`
+        : 'ส่งออเดอร์เรียบร้อย! (รายการของ Guest)'
     );
     setCart([]);
     sound.playSent();
@@ -858,6 +908,7 @@ export default function App() {
           shopOpen={shopOpen}
           shopMessage={shopMessage}
           orders={orders}
+          setToast={setToast}
         />
       ) : (
         <BaristaView
@@ -893,6 +944,7 @@ export default function App() {
           setQty={setQty}
           onClose={closeModal}
           onAddToCart={addToCart}
+          onInstantOrder={handleInstantOrder}
         />
       )}
 
@@ -920,6 +972,124 @@ export default function App() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  WELCOME POPUP COMPONENT                                           */
+/* ------------------------------------------------------------------ */
+
+function WelcomeModal({
+  onSelectMember,
+  onSelectGuest,
+}: {
+  onSelectMember: (phone: string) => void;
+  onSelectGuest: () => void;
+}) {
+  const [step, setStep] = useState<'choose' | 'inputPhone'>('choose');
+  const [phoneInput, setPhoneInput] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  function handleConfirmPhone() {
+    const clean = phoneInput.trim();
+    if (clean.length !== 4) {
+      setErrorMsg('กรุณากรอกเบอร์โทร 4 ตัวท้ายให้ครบถ้วน');
+      return;
+    }
+    onSelectMember(clean);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+      <div className="relative w-full max-w-sm bg-[#0D1117] border border-amber-400/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(245,158,11,0.2)] text-center animate-fadeIn">
+        {step === 'choose' ? (
+          <>
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400">
+              <Gift size={36} />
+            </div>
+            <h2 className="text-2xl font-black text-white mb-2">
+              ยินดีต้อนรับ!
+            </h2>
+            <p className="text-sm text-neutral-300 font-semibold mb-6">
+              ต้องการสะสมแต้มสำหรับออเดอร์นี้หรือไม่?
+              <br />
+              <span className="text-xs text-amber-300 font-normal">
+                (ซื้อครบทุก 10 บาท = 1 คะแนน)
+              </span>
+            </p>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => setStep('inputPhone')}
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-black text-base flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.4)] transition-all active:scale-[0.98]"
+              >
+                <Award size={20} /> สะสมแต้ม
+              </button>
+
+              <button
+                onClick={onSelectGuest}
+                className="w-full py-3.5 px-4 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-neutral-300 hover:text-white font-bold text-base flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+              >
+                <UserX size={20} /> ไม่สะสมแต้ม (Guest)
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400">
+              <Phone size={32} />
+            </div>
+            <h2 className="text-2xl font-black text-white mb-2">
+              กรอกเบอร์โทร
+            </h2>
+            <p className="text-sm text-neutral-300 font-semibold mb-5">
+              ระบุเบอร์โทรศัพท์ 4 ตัวท้ายเพื่อใช้สะสมแต้ม
+            </p>
+
+            <div className="mb-4">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={phoneInput}
+                autoFocus
+                onChange={(e) => {
+                  setErrorMsg('');
+                  const val = e.target.value.replace(/\D/g, '');
+                  if (val.length <= 4) setPhoneInput(val);
+                }}
+                maxLength={4}
+                placeholder="เช่น 1234"
+                className="w-full text-center py-3 rounded-2xl bg-white/[0.05] border border-amber-400/40 text-2xl font-mono font-black text-amber-300 placeholder:text-neutral-600 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              {errorMsg && (
+                <p className="text-xs text-rose-400 font-bold mt-2">
+                  {errorMsg}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setStep('choose');
+                  setErrorMsg('');
+                }}
+                className="flex-1 py-3 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-neutral-300 font-bold text-sm"
+              >
+                ย้อนกลับ
+              </button>
+              <button
+                onClick={handleConfirmPhone}
+                className="flex-1 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black text-sm shadow-[0_0_15px_rgba(245,158,11,0.4)]"
+              >
+                ยืนยัน
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface CustomerViewProps {
   menu: MenuItem[];
   memberPhoneCode: string;
@@ -934,6 +1104,7 @@ interface CustomerViewProps {
   shopOpen: boolean;
   shopMessage: string;
   orders: Order[];
+  setToast: (msg: string) => void;
 }
 
 function CustomerView({
@@ -950,12 +1121,36 @@ function CustomerView({
   shopOpen,
   shopMessage,
   orders,
+  setToast,
 }: CustomerViewProps) {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | null>(
     null
   );
   const [memberInfo, setMemberInfo] = useState<MemberData | null>(null);
+
+  const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    const hasPrompted = sessionStorage.getItem('cof_welcome_prompted');
+    if (!hasPrompted) {
+      setShowWelcomeModal(true);
+    }
+  }, []);
+
+  function handleWelcomeMember(phone4: string) {
+    setMemberPhoneCode(phone4);
+    sessionStorage.setItem('cof_welcome_prompted', 'true');
+    setShowWelcomeModal(false);
+    setToast(`ยินดีต้อนรับสมาชิก #${phone4}`);
+  }
+
+  function handleWelcomeGuest() {
+    setMemberPhoneCode('');
+    sessionStorage.setItem('cof_welcome_prompted', 'true');
+    setShowWelcomeModal(false);
+    setToast('เข้าใช้งานในฐานะ Guest');
+  }
 
   const cartTotal = cart.reduce((sum, item) => sum + item.total, 0);
   const totalCartItems = cart.reduce((sum, i) => sum + i.qty, 0);
@@ -1009,35 +1204,55 @@ function CustomerView({
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-28">
+      {showWelcomeModal && (
+        <WelcomeModal
+          onSelectMember={handleWelcomeMember}
+          onSelectGuest={handleWelcomeGuest}
+        />
+      )}
+
       {/* Header */}
       <div className="pb-6 mb-6 border-b border-white/15">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-none text-white">
-              Cof N&apos; Rob <span className="text-amber-400">Coffee Bar</span>
-            </h1>
-            <p className="text-sm font-semibold text-neutral-300 mt-1">
-              สะสมแต้มง่ายๆ: ซื้อครบทุก 10 บาท = 1 คะแนน
-            </p>
+          {/* ส่วนโลโก้และชื่อร้าน */}
+          <div className="flex items-center gap-3.5">
+            <img
+              src="/logo.png"
+              alt="Cof N' Rob Logo"
+              className="w-12 h-12 sm:w-14 sm:h-14 object-contain rounded-2xl bg-amber-400/10 p-1 border border-amber-400/30 shrink-0"
+              onError={(e) => {
+                // หากซ่อนชั่วคราวหากยังไม่มีไฟล์รูปในโฟลเดอร์ public
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+            />
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-none text-white">
+                Cof N&apos; Rob{' '}
+                <span className="text-amber-400">Coffee Bar</span>
+              </h1>
+              <p className="text-sm font-semibold text-neutral-300 mt-1">
+                สะสมแต้มง่ายๆ: ซื้อครบทุก 10 บาท = 1 คะแนน
+              </p>
 
-            <div className="mt-3 max-w-xs">
-              <div className="relative">
-                <Phone
-                  size={16}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400"
-                />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={memberPhoneCode}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    if (val.length <= 4) setMemberPhoneCode(val);
-                  }}
-                  placeholder="กรอกเบอร์โทร 4 ตัวท้าย..."
-                  maxLength={4}
-                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono font-bold text-amber-300 placeholder:text-neutral-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-amber-400"
-                />
+              <div className="mt-3 max-w-xs">
+                <div className="relative">
+                  <Phone
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400"
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={memberPhoneCode}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      if (val.length <= 4) setMemberPhoneCode(val);
+                    }}
+                    placeholder="กรอกเบอร์โทร 4 ตัวท้าย (Guest หากไม่กรอก)"
+                    maxLength={4}
+                    className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono font-bold text-amber-300 placeholder:text-neutral-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1079,7 +1294,7 @@ function CustomerView({
           </div>
         </div>
 
-        {memberPhoneCode.trim().length === 4 && (
+        {memberPhoneCode.trim().length === 4 ? (
           <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-400/30 flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-amber-400/20 text-amber-400">
@@ -1106,6 +1321,16 @@ function CustomerView({
                 {memberHistory.length} ออเดอร์
               </span>
             </div>
+          </div>
+        ) : (
+          <div className="mt-4 p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs font-semibold text-neutral-400">
+            <span>สถานะปัจจุบัน: Guest (ไม่ได้สะสมแต้ม)</span>
+            <button
+              onClick={() => setShowWelcomeModal(true)}
+              className="text-amber-400 font-bold hover:underline"
+            >
+              คลิกเพื่อใส่เบอร์สะสมแต้ม
+            </button>
           </div>
         )}
       </div>
@@ -1400,7 +1625,10 @@ function CustomerView({
                 </div>
 
                 <div className="mb-4 text-xs sm:text-sm text-emerald-400 font-bold flex items-center gap-1.5">
-                  <Award size={16} /> จะได้รับคะแนนสะสม: +{cartTotal / 10} คะแนน
+                  <Award size={16} />{' '}
+                  {memberPhoneCode.trim().length === 4
+                    ? `จะได้รับคะแนนสะสม: +${cartTotal / 10} คะแนน`
+                    : 'สั่งซื้อในฐานะ Guest (ไม่ได้รับคะแนน)'}
                 </div>
 
                 <button
@@ -1462,6 +1690,7 @@ interface CustomizeModalProps {
   setQty: (val: number) => void;
   onClose: () => void;
   onAddToCart: () => void;
+  onInstantOrder: () => void;
 }
 
 function CustomizeModal({
@@ -1472,6 +1701,7 @@ function CustomizeModal({
   setQty,
   onClose,
   onAddToCart,
+  onInstantOrder,
 }: CustomizeModalProps) {
   const total = item.price * qty;
 
@@ -1567,12 +1797,21 @@ function CustomizeModal({
             ฿{total}
           </span>
         </div>
-        <button
-          onClick={onAddToCart}
-          className="mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-black text-base active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(245,158,11,0.6)]"
-        >
-          <Plus size={20} /> เพิ่มลงตะกร้า
-        </button>
+
+        <div className="mt-5 flex gap-2.5">
+          <button
+            onClick={onAddToCart}
+            className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-white/[0.08] hover:bg-white/[0.15] border border-white/15 text-white font-extrabold text-sm sm:text-base active:scale-[0.98] transition-all"
+          >
+            <Plus size={18} /> เพิ่มลงตะกร้า
+          </button>
+          <button
+            onClick={onInstantOrder}
+            className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-black text-sm sm:text-base active:scale-[0.98] transition-all shadow-[0_0_25px_-5px_rgba(245,158,11,0.6)]"
+          >
+            <Send size={18} /> สั่งทันที
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1631,7 +1870,7 @@ function BaristaView({
     new Date().toISOString().split('T')[0]
   );
   const [selectedMonth, setSelectedMonth] = useState<string>(
-    new Date().toISOString().slice(0, 7) // YYYY-MM
+    new Date().toISOString().slice(0, 7)
   );
   const [tempMsg, setTempMsg] = useState<string>(shopMessage);
 
@@ -1658,15 +1897,25 @@ function BaristaView({
   return (
     <div className="max-w-7xl mx-auto px-4 pb-16">
       <div className="pt-6 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Coffee size={24} className="text-teal-400" /> Cof N&apos; Rob —
-            Barista Display Dashboard
-          </h1>
-          <p className="text-sm font-medium text-neutral-300 mt-1 flex items-center gap-1.5">
-            <Radio size={14} className="text-emerald-400 animate-pulse" /> Live
-            feed synced with customer terminals
-          </p>
+        <div className="flex items-center gap-3">
+          <img
+            src="/logo.png"
+            alt="Cof N' Rob Logo"
+            className="w-10 h-10 object-contain rounded-xl bg-teal-400/10 p-1 border border-teal-400/30 shrink-0"
+            onError={(e) => {
+              (e.target as HTMLElement).style.display = 'none';
+            }}
+          />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              <Coffee size={24} className="text-teal-400" /> Cof N&apos; Rob —
+              Barista Display Dashboard
+            </h1>
+            <p className="text-sm font-medium text-neutral-300 mt-1 flex items-center gap-1.5">
+              <Radio size={14} className="text-emerald-400 animate-pulse" />{' '}
+              Live feed synced with customer terminals
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3 text-sm">
           <button
@@ -2542,10 +2791,10 @@ function MenuEditor({
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {items.map((item) => (
-                <button
+                <div
                   key={item.id}
                   onClick={() => setEditingItem(item)}
-                  className="text-left flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#0D1117] p-3.5 hover:border-teal-400/50 transition-colors"
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#0D1117] p-3.5 cursor-pointer hover:border-teal-400/50 transition-colors"
                 >
                   <div className="min-w-0">
                     <p className="text-base font-black text-white truncate">
@@ -2554,12 +2803,16 @@ function MenuEditor({
                     <p className="text-xs text-neutral-400 font-medium truncate">
                       {item.name}
                     </p>
-                    <p className="text-sm font-mono font-black text-amber-400 mt-1">
-                      ฿{item.price}
-                    </p>
                   </div>
-                  <Pencil size={18} className="shrink-0 text-neutral-400" />
-                </button>
+                  <div className="text-right shrink-0">
+                    <span className="font-mono font-bold text-amber-300 text-sm block">
+                      ฿{item.price}
+                    </span>
+                    <span className="text-xs text-teal-400 flex items-center justify-end gap-1 mt-0.5">
+                      <Pencil size={12} /> แก้ไข
+                    </span>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -2569,88 +2822,65 @@ function MenuEditor({
   );
 }
 
+interface MenuEditModalProps {
+  item: MenuItem | null;
+  isNew: boolean;
+  onClose: () => void;
+  onSave: (id: string, updates: Partial<MenuItem>) => void;
+  onAdd: (newItem: Omit<MenuItem, 'id'>) => void;
+  onDelete: (id: string) => void;
+}
+
 function MenuEditModal({
   item,
-  isNew = false,
+  isNew,
   onClose,
   onSave,
   onAdd,
   onDelete,
-}: {
-  item: MenuItem | null;
-  isNew?: boolean;
-  onClose: () => void;
-  onSave?: (id: string, updates: Partial<MenuItem>) => void;
-  onAdd?: (item: Omit<MenuItem, 'id'>) => void;
-  onDelete?: (id: string) => void;
-}) {
-  const [name, setName] = useState<string>(item?.name || '');
-  const [nameTh, setNameTh] = useState<string>(item?.nameTh || '');
+}: MenuEditModalProps) {
+  const [nameTh, setNameTh] = useState(item?.nameTh || '');
+  const [name, setName] = useState(item?.name || '');
   const [category, setCategory] = useState<CategoryType>(
     item?.category || 'ICED COFFEE'
   );
   const [theme, setTheme] = useState<ThemeType>(item?.theme || 'blue');
-  const [price, setPrice] = useState<number | string>(item?.price ?? 50);
-  const [available, setAvailable] = useState<boolean>(item?.available ?? true);
+  const [price, setPrice] = useState<number>(item?.price || 50);
 
-  const categories: CategoryType[] = [
-    'ICED COFFEE',
-    'HOT COFFEE',
-    'MATCHA & TEA',
-    'OTHERS',
-  ];
-
-  const themeOptions: { value: ThemeType; label: string }[] = [
-    { value: 'blue', label: 'Blue (กาแฟเย็น)' },
-    { value: 'brown', label: 'Brown (กาแฟร้อน)' },
-    { value: 'green', label: 'Green (ชา/มัทฉะ)' },
-    { value: 'teal', label: 'Teal' },
-    { value: 'gray', label: 'Gray (อื่นๆ)' },
-  ];
-
-  function handleSubmit() {
-    const cleanPrice = Math.max(0, Number(price) || 0);
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     if (isNew) {
-      if (!name.trim() || !nameTh.trim()) return;
-      onAdd?.({
-        name: name.trim(),
-        nameTh: nameTh.trim(),
+      onAdd({
+        name,
+        nameTh,
         category,
         theme,
-        price: cleanPrice,
-        available,
+        price,
+        available: true,
       });
-    } else if (item && onSave) {
+    } else if (item) {
       onSave(item.id, {
-        name: name.trim() || item.name,
-        nameTh: nameTh.trim() || item.nameTh,
+        name,
+        nameTh,
         category,
         theme,
-        price: cleanPrice,
-        available,
+        price,
       });
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative w-full sm:max-w-md bg-[#0D1117] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto shadow-2xl">
-        <div className="flex items-start justify-between mb-4">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            {isNew ? (
-              <>
-                <Plus size={20} className="text-teal-400" /> เพิ่มเมนูใหม่
-              </>
-            ) : (
-              <>
-                <Pencil size={18} className="text-teal-400" /> แก้ไขเมนู
-              </>
-            )}
-          </h3>
+      <div className="relative w-full max-w-md bg-[#0D1117] border border-white/10 rounded-3xl p-6 shadow-2xl animate-fadeIn">
+        <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Pencil size={20} className="text-teal-400" />
+            {isNew ? 'เพิ่มเมนูใหม่' : `แก้ไขเมนู: ${item?.nameTh}`}
+          </h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
@@ -2659,146 +2889,110 @@ function MenuEditModal({
           </button>
         </div>
 
-        <label className="block text-sm font-bold text-neutral-200 mb-1.5">
-          ชื่อภาษาไทย (Thai Name)
-        </label>
-        <input
-          value={nameTh}
-          onChange={(e) => setNameTh(e.target.value)}
-          placeholder="เช่น เอสเพรสโซ่เย็น"
-          className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-3.5 py-2.5 text-base font-bold text-amber-300 mb-4 focus:outline-none focus:ring-2 focus:ring-teal-400"
-        />
-
-        <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
-          ชื่อภาษาอังกฤษ (English Name)
-        </label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Iced Espresso"
-          className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-3.5 py-2.5 text-sm text-white mb-4 focus:outline-none focus:ring-2 focus:ring-teal-400"
-        />
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
-              หมวดหมู่ (Category)
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              ชื่อเมนู (ภาษาไทย)
             </label>
-            <select
-              value={category}
-              onChange={(e) => {
-                const cat = e.target.value as CategoryType;
-                setCategory(cat);
-                if (cat === 'ICED COFFEE') setTheme('blue');
-                else if (cat === 'HOT COFFEE') setTheme('brown');
-                else if (cat === 'MATCHA & TEA') setTheme('green');
-                else setTheme('gray');
-              }}
-              className="w-full rounded-xl bg-[#161B22] border border-white/10 px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-            >
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            <input
+              type="text"
+              required
+              value={nameTh}
+              onChange={(e) => setNameTh(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
-              ธีมสี (Theme)
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              ชื่อเมนู (English)
             </label>
-            <select
-              value={theme}
-              onChange={(e) => setTheme(e.target.value as ThemeType)}
-              className="w-full rounded-xl bg-[#161B22] border border-white/10 px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-            >
-              {themeOptions.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
           </div>
-        </div>
 
-        <label className="block text-sm font-bold text-neutral-200 mb-1.5">
-          ราคา (บาท)
-        </label>
-        <div className="relative mb-4">
-          <Tag
-            size={16}
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
-          />
-          <input
-            type="number"
-            min={0}
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className="w-full rounded-xl bg-white/[0.04] border border-white/10 pl-10 pr-3.5 py-2.5 text-base font-mono font-extrabold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-          />
-        </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-neutral-300 mb-1">
+                หมวดหมู่
+              </label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as CategoryType)}
+                className="w-full px-3 py-2 rounded-xl bg-[#161B22] border border-white/10 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+              >
+                <option value="ICED COFFEE">ICED COFFEE</option>
+                <option value="HOT COFFEE">HOT COFFEE</option>
+                <option value="MATCHA & TEA">MATCHA & TEA</option>
+                <option value="OTHERS">OTHERS</option>
+              </select>
+            </div>
 
-        <label className="block text-sm font-bold text-neutral-200 mb-1.5">
-          สถานะแสดงเมนู
-        </label>
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setAvailable(true)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border transition-colors ${
-              available
-                ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
-                : 'bg-white/[0.03] border-white/10 text-neutral-400'
-            }`}
-          >
-            <CheckCircle2 size={16} /> แสดงเมนู
-          </button>
-          <button
-            onClick={() => setAvailable(false)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border transition-colors ${
-              !available
-                ? 'bg-rose-500/20 border-rose-400/50 text-rose-300'
-                : 'bg-white/[0.03] border-white/10 text-neutral-400'
-            }`}
-          >
-            <EyeOff size={16} /> ซ่อนเมนู
-          </button>
-        </div>
+            <div>
+              <label className="block text-xs font-bold text-neutral-300 mb-1">
+                ธีมสีปุ่ม
+              </label>
+              <select
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as ThemeType)}
+                className="w-full px-3 py-2 rounded-xl bg-[#161B22] border border-white/10 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+              >
+                <option value="blue">Blue (ฟ้า)</option>
+                <option value="brown">Brown (น้ำตาล)</option>
+                <option value="green">Green (เขียว)</option>
+                <option value="teal">Teal (เขียวอมฟ้า)</option>
+                <option value="gray">Gray (เทา)</option>
+              </select>
+            </div>
+          </div>
 
-        <div className="flex gap-2">
-          {!isNew && item && onDelete && (
-            <button
-              onClick={() => {
-                if (
-                  confirm(
-                    `คุณต้องการลบเมนู "${item.nameTh || item.name}" ใช่หรือไม่?`
-                  )
-                ) {
-                  onDelete(item.id);
-                }
-              }}
-              className="flex items-center justify-center p-3 rounded-2xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/40 text-rose-300 transition-colors"
-              title="ลบเมนูนี้"
-            >
-              <Trash2 size={20} />
-            </button>
-          )}
+          <div>
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              ราคา (บาท)
+            </label>
+            <input
+              type="number"
+              required
+              min={0}
+              value={price}
+              onChange={(e) => setPrice(Number(e.target.value))}
+              className="w-full px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-lg font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+          </div>
 
-          <button
-            onClick={handleSubmit}
-            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-gradient-to-r from-teal-400 to-teal-300 text-black font-black text-base active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(45,212,191,0.6)]"
-          >
-            {isNew ? (
-              <>
-                <Plus size={20} /> สร้างเมนูใหม่
-              </>
-            ) : (
-              <>
-                <Save size={18} /> บันทึกการเปลี่ยนแปลง
-              </>
+          <div className="pt-3 flex gap-2">
+            {!isNew && item && (
+              <button
+                type="button"
+                onClick={() => onDelete(item.id)}
+                className="p-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold text-sm flex items-center justify-center gap-1.5"
+                title="ลบเมนูนี้"
+              >
+                <Trash2 size={16} /> ลบ
+              </button>
             )}
-          </button>
-        </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-neutral-300 font-bold text-sm"
+            >
+              ยกเลิก
+            </button>
+
+            <button
+              type="submit"
+              className="flex-1 py-3 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-extrabold text-sm flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(45,212,191,0.3)]"
+            >
+              <Save size={16} /> บันทึก
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
