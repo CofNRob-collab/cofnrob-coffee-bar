@@ -10,6 +10,12 @@ import {
   get,
 } from 'firebase/database';
 import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import {
   Coffee,
   Snowflake,
   Flame,
@@ -47,6 +53,8 @@ import {
   Users,
   Gift,
   UserX,
+  Lock,
+  LogOut,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -68,6 +76,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const auth = getAuth(app);
 
 /* ------------------------------------------------------------------ */
 /*  TYPES & INTERFACES                                                */
@@ -543,7 +552,23 @@ export default function App() {
   const [shopMessage, setShopMessage] = useState<string>(
     'ร้านปิดให้บริการชั่วคราว'
   );
+
+  // Firebase Auth State
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+
   const sound = useOrderSound(soundOn);
+
+  /* ------------------------------------------------------------------ */
+  /*  FIREBASE AUTH LISTENER                                            */
+  /* ------------------------------------------------------------------ */
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribeAuth();
+  }, []);
 
   /* ------------------------------------------------------------------ */
   /*  FIREBASE MENU DATA SYNCING                                        */
@@ -911,7 +936,9 @@ export default function App() {
           setToast={setToast}
         />
       ) : (
-        <BaristaView
+        <BaristaContainer
+          user={user}
+          authLoading={authLoading}
           menu={menu}
           toggleStock={toggleStock}
           baristaTab={baristaTab}
@@ -1214,14 +1241,12 @@ function CustomerView({
       {/* Header */}
       <div className="pb-6 mb-6 border-b border-white/15">
         <div className="flex items-center justify-between">
-          {/* ส่วนโลโก้และชื่อร้าน */}
           <div className="flex items-center gap-3.5">
             <img
               src="/logo.png"
               alt="Cof N' Rob Logo"
               className="w-12 h-12 sm:w-14 sm:h-14 object-contain rounded-2xl bg-amber-400/10 p-1 border border-amber-400/30 shrink-0"
               onError={(e) => {
-                // หากซ่อนชั่วคราวหากยังไม่มีไฟล์รูปในโฟลเดอร์ public
                 (e.target as HTMLElement).style.display = 'none';
               }}
             />
@@ -1817,7 +1842,179 @@ function CustomizeModal({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  FIREBASE AUTH LOGIN FORM                                          */
+/* ------------------------------------------------------------------ */
+
+function LoginScreen({ setToast }: { setToast: (msg: string) => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email || !password) {
+      setToast('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
+      return;
+    }
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      setToast('เข้าสู่ระบบสำเร็จ (Logged in successfully)');
+    } catch (err: any) {
+      setToast(`เข้าสู่ระบบไม่สำเร็จ: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-[80vh] flex items-center justify-center px-4">
+      <div className="w-full max-w-md bg-[#0D1117] border border-teal-500/30 rounded-3xl p-8 shadow-[0_0_50px_rgba(20,184,166,0.15)]">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-teal-400/10 border border-teal-400/30 flex items-center justify-center text-teal-400">
+            <Lock size={32} />
+          </div>
+          <h2 className="text-2xl font-black text-white">
+            Barista Portal Login
+          </h2>
+          <p className="text-sm text-neutral-400 mt-1">
+            กรุณาเข้าสู่ระบบด้วยบัญชี Firebase Authentication เพื่อจัดการร้าน
+          </p>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-neutral-300 mb-1.5 uppercase tracking-wider">
+              Email Address
+            </label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="barista@cofnrob.com"
+              className="w-full px-4 py-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-neutral-300 mb-1.5 uppercase tracking-wider">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full px-4 py-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-2 py-3.5 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-black text-base transition-all shadow-[0_0_20px_rgba(20,184,166,0.4)] active:scale-[0.98] disabled:opacity-50"
+          >
+            {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ (Sign In)'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+interface BaristaContainerProps {
+  user: any;
+  authLoading: boolean;
+  menu: MenuItem[];
+  toggleStock: (id: string) => void;
+  baristaTab: 'orders' | 'points' | 'stock' | 'editor';
+  setBaristaTab: (tab: 'orders' | 'points' | 'stock' | 'editor') => void;
+  activeOrders: Order[];
+  allOrders: Order[];
+  advanceOrder: (id: string, status: OrderStatus) => void;
+  now: number;
+  sound: ReturnType<typeof useOrderSound>;
+  soundOn: boolean;
+  setSoundOn: (val: boolean) => void;
+  editingItem: MenuItem | null;
+  setEditingItem: (item: MenuItem | null) => void;
+  setIsAddingNew: (val: boolean) => void;
+  updateMenuItem: (id: string, updates: Partial<MenuItem>) => void;
+  shopOpen: boolean;
+  toggleShopStatus: () => void;
+  shopMessage: string;
+  updateShopMessage: (msg: string) => void;
+  setToast: (msg: string) => void;
+}
+
+function BaristaContainer({
+  user,
+  authLoading,
+  menu,
+  toggleStock,
+  baristaTab,
+  setBaristaTab,
+  activeOrders,
+  allOrders,
+  advanceOrder,
+  now,
+  sound,
+  soundOn,
+  setSoundOn,
+  editingItem,
+  setEditingItem,
+  setIsAddingNew,
+  updateMenuItem,
+  shopOpen,
+  toggleShopStatus,
+  shopMessage,
+  updateShopMessage,
+  setToast,
+}: BaristaContainerProps) {
+  if (authLoading) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center text-teal-400 font-bold text-lg animate-pulse">
+        กำลังตรวจสอบสถานะการเข้าสู่ระบบ...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen setToast={setToast} />;
+  }
+
+  return (
+    <BaristaView
+      user={user}
+      menu={menu}
+      toggleStock={toggleStock}
+      baristaTab={baristaTab}
+      setBaristaTab={setBaristaTab}
+      activeOrders={activeOrders}
+      allOrders={allOrders}
+      advanceOrder={advanceOrder}
+      now={now}
+      sound={sound}
+      soundOn={soundOn}
+      setSoundOn={setSoundOn}
+      editingItem={editingItem}
+      setEditingItem={setEditingItem}
+      setIsAddingNew={setIsAddingNew}
+      updateMenuItem={updateMenuItem}
+      shopOpen={shopOpen}
+      toggleShopStatus={toggleShopStatus}
+      shopMessage={shopMessage}
+      updateShopMessage={updateShopMessage}
+      setToast={setToast}
+    />
+  );
+}
+
 interface BaristaViewProps {
+  user: any;
   menu: MenuItem[];
   toggleStock: (id: string) => void;
   baristaTab: 'orders' | 'points' | 'stock' | 'editor';
@@ -1841,6 +2038,7 @@ interface BaristaViewProps {
 }
 
 function BaristaView({
+  user,
   menu,
   toggleStock,
   baristaTab,
@@ -1894,6 +2092,15 @@ function BaristaView({
     initialized.current = true;
   }, [activeOrders, sound]);
 
+  async function handleLogout() {
+    try {
+      await signOut(auth);
+      setToast('ออกจากระบบเรียบร้อยแล้ว');
+    } catch (err: any) {
+      setToast(`เกิดข้อผิดพลาดในการออกจากระบบ: ${err.message}`);
+    }
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 pb-16">
       <div className="pt-6 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
@@ -1913,7 +2120,8 @@ function BaristaView({
             </h1>
             <p className="text-sm font-medium text-neutral-300 mt-1 flex items-center gap-1.5">
               <Radio size={14} className="text-emerald-400 animate-pulse" />{' '}
-              Live feed synced with customer terminals
+              Live feed synced with customer terminals (Logged in as:{' '}
+              <span className="text-teal-300 font-bold">{user?.email}</span>)
             </p>
           </div>
         </div>
@@ -1943,6 +2151,14 @@ function BaristaView({
             className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-neutral-300 hover:text-white"
           >
             {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+          </button>
+
+          <button
+            onClick={handleLogout}
+            title="ออกจากระบบ"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold transition-colors"
+          >
+            <LogOut size={16} /> ออกจากระบบ
           </button>
         </div>
       </div>
@@ -2672,7 +2888,7 @@ function StockControl({
     <div className="mt-6">
       <p className="text-sm font-semibold text-neutral-300 mb-4 flex items-center gap-1.5">
         <Zap size={16} className="text-teal-400" /> หากปิดการใช้งานเมนูใด
-        ระบบจะทำการ <strong className="text-amber-300">ซ่อนเมนูนานั้น</strong>{' '}
+        ระบบจะทำการ <strong className="text-amber-300">ซ่อนเมنูนานั้น</strong>{' '}
         ออกจากหน้าของลูกค้าทันที
       </p>
       {categories.map((cat) => {
@@ -2875,12 +3091,11 @@ function MenuEditModal({
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md bg-[#0D1117] border border-white/10 rounded-3xl p-6 shadow-2xl animate-fadeIn">
-        <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Pencil size={20} className="text-teal-400" />
-            {isNew ? 'เพิ่มเมนูใหม่' : `แก้ไขเมนู: ${item?.nameTh}`}
-          </h2>
+      <div className="relative w-full max-w-md bg-[#0D1117] border border-white/10 rounded-3xl p-6 shadow-2xl">
+        <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-5">
+          <h3 className="text-xl font-black text-white">
+            {isNew ? 'เพิ่มเมนูใหม่ (Add Menu)' : 'แก้ไขเมนู (Edit Menu)'}
+          </h3>
           <button
             onClick={onClose}
             className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
@@ -2892,39 +3107,41 @@ function MenuEditModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-neutral-300 mb-1">
-              ชื่อเมนู (ภาษาไทย)
+              ชื่อภาษาไทย (Thai Name)
             </label>
             <input
               type="text"
               required
               value={nameTh}
               onChange={(e) => setNameTh(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+              placeholder="เช่น อเมริกาโน่เย็น"
+              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
             />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-neutral-300 mb-1">
-              ชื่อเมนู (English)
+              ชื่อภาษาอังกฤษ (English Name)
             </label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+              placeholder="เช่น Iced Americano"
+              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-neutral-300 mb-1">
-                หมวดหมู่
+                หมวดหมู่ (Category)
               </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as CategoryType)}
-                className="w-full px-3 py-2 rounded-xl bg-[#161B22] border border-white/10 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                className="w-full px-3 py-2.5 rounded-xl bg-[#161B22] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
               >
                 <option value="ICED COFFEE">ICED COFFEE</option>
                 <option value="HOT COFFEE">HOT COFFEE</option>
@@ -2935,25 +3152,24 @@ function MenuEditModal({
 
             <div>
               <label className="block text-xs font-bold text-neutral-300 mb-1">
-                ธีมสีปุ่ม
+                ธีมสีปุ่ม (Theme)
               </label>
               <select
                 value={theme}
                 onChange={(e) => setTheme(e.target.value as ThemeType)}
-                className="w-full px-3 py-2 rounded-xl bg-[#161B22] border border-white/10 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                className="w-full px-3 py-2.5 rounded-xl bg-[#161B22] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
               >
-                <option value="blue">Blue (ฟ้า)</option>
-                <option value="brown">Brown (น้ำตาล)</option>
-                <option value="green">Green (เขียว)</option>
-                <option value="teal">Teal (เขียวอมฟ้า)</option>
-                <option value="gray">Gray (เทา)</option>
+                <option value="blue">Blue (Iced)</option>
+                <option value="brown">Brown (Hot)</option>
+                <option value="green">Green (Matcha)</option>
+                <option value="gray">Gray (Others)</option>
               </select>
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-bold text-neutral-300 mb-1">
-              ราคา (บาท)
+              ราคา (Price - บาท)
             </label>
             <input
               type="number"
@@ -2961,36 +3177,44 @@ function MenuEditModal({
               min={0}
               value={price}
               onChange={(e) => setPrice(Number(e.target.value))}
-              className="w-full px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-lg font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-teal-400"
             />
           </div>
 
-          <div className="pt-3 flex gap-2">
+          <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3">
             {!isNew && item && (
               <button
                 type="button"
-                onClick={() => onDelete(item.id)}
-                className="p-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold text-sm flex items-center justify-center gap-1.5"
-                title="ลบเมนูนี้"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `คุณต้องการลบเมนู ${item.nameTh} ออกจากระบบใช่หรือไม่?`
+                    )
+                  ) {
+                    onDelete(item.id);
+                  }
+                }}
+                className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-sm transition-colors flex items-center gap-1.5"
               >
-                <Trash2 size={16} /> ลบ
+                <Trash2 size={16} /> ลบเมนู
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-neutral-300 font-bold text-sm"
-            >
-              ยกเลิก
-            </button>
-
-            <button
-              type="submit"
-              className="flex-1 py-3 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-extrabold text-sm flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(45,212,191,0.3)]"
-            >
-              <Save size={16} /> บันทึก
-            </button>
+            <div className="flex gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-300 font-bold text-sm transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-black text-sm transition-all shadow-[0_0_15px_rgba(20,184,166,0.4)]"
+              >
+                บันทึก
+              </button>
+            </div>
           </div>
         </form>
       </div>
