@@ -877,6 +877,75 @@ export default function App() {
     }
   }
 
+  /**
+   * แก้ไขออเดอร์ย้อนหลัง (รวมถึงออเดอร์ที่กด Done ไปแล้ว) เพื่อแก้ไขข้อผิดพลาด
+   * เช่น กดเมนูผิด, จำนวนผิด, ราคาผิด, หรือใส่เบอร์สมาชิกผิด
+   * แต้มสะสมจะถูกคำนวณใหม่ให้สอดคล้องกับข้อมูลที่แก้ไขเสมอ:
+   *   1) ถ้าออเดอร์เดิมเคยให้แต้มไปแล้ว จะหักแต้มเดิมออกจากสมาชิกคนเดิมก่อน
+   *   2) ถ้าสถานะหลังแก้ไขเป็น "done" และมีเบอร์สมาชิก จะคำนวณแต้มใหม่จากยอดใหม่แล้วเติมให้
+   */
+  async function editOrder(
+    id: string,
+    updates: {
+      customerName: string;
+      memberPhoneCode: string;
+      items: CartItem[];
+      status: OrderStatus;
+    }
+  ) {
+    const original = orders.find((o) => o.id === id);
+    if (!original) return;
+
+    const newTotal = updates.items.reduce((sum, i) => sum + i.total, 0);
+    const trimmedPhone = updates.memberPhoneCode.trim();
+    const isMember = trimmedPhone.length === 4;
+
+    // 1) หักแต้มเดิมออกจากสมาชิกคนเดิม ถ้าออเดอร์นี้เคยประมวลผลแต้มไปแล้ว
+    if (original.pointsProcessed && original.memberPhoneCode) {
+      const oldMemberRef = ref(db, `members/${original.memberPhoneCode}`);
+      const oldSnap = await get(oldMemberRef);
+      if (oldSnap.exists()) {
+        const oldPoints = oldSnap.val().points || 0;
+        const pointsToRevert =
+          original.earnedPoints || original.total / 10;
+        await update(oldMemberRef, {
+          points: Math.max(0, oldPoints - pointsToRevert),
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    // 2) ถ้าสถานะหลังแก้ไขคือ "done" และมีเบอร์สมาชิก ให้คำนวณแต้มใหม่แล้วเติมให้
+    let newEarnedPoints = 0;
+    let pointsProcessed = false;
+
+    if (updates.status === 'done' && isMember) {
+      newEarnedPoints = newTotal / 10;
+      const memberRef = ref(db, `members/${trimmedPhone}`);
+      const snap = await get(memberRef);
+      const currentPoints = snap.exists() ? snap.val().points || 0 : 0;
+      await set(memberRef, {
+        phone4: trimmedPhone,
+        points: currentPoints + newEarnedPoints,
+        updatedAt: Date.now(),
+      });
+      pointsProcessed = true;
+    }
+
+    const orderRef = ref(db, `orders/${id}`);
+    await update(orderRef, {
+      customerName: updates.customerName.trim() || 'Guest',
+      memberPhoneCode: isMember ? trimmedPhone : '',
+      items: updates.items,
+      total: newTotal,
+      status: updates.status,
+      earnedPoints: newEarnedPoints,
+      pointsProcessed,
+    });
+
+    setToast('แก้ไขออเดอร์เรียบร้อยแล้ว (Order updated)');
+  }
+
   /* ------------------------------------------------------------------ */
   /*  PERSISTENT MENU MANAGEMENT FUNCTIONS                              */
   /* ------------------------------------------------------------------ */
@@ -946,6 +1015,7 @@ export default function App() {
           activeOrders={activeOrders}
           allOrders={orders}
           advanceOrder={advanceOrder}
+          editOrder={editOrder}
           now={now}
           sound={sound}
           soundOn={soundOn}
@@ -1935,6 +2005,15 @@ interface BaristaContainerProps {
   activeOrders: Order[];
   allOrders: Order[];
   advanceOrder: (id: string, status: OrderStatus) => void;
+  editOrder: (
+    id: string,
+    updates: {
+      customerName: string;
+      memberPhoneCode: string;
+      items: CartItem[];
+      status: OrderStatus;
+    }
+  ) => void;
   now: number;
   sound: ReturnType<typeof useOrderSound>;
   soundOn: boolean;
@@ -1960,6 +2039,7 @@ function BaristaContainer({
   activeOrders,
   allOrders,
   advanceOrder,
+  editOrder,
   now,
   sound,
   soundOn,
@@ -1996,6 +2076,7 @@ function BaristaContainer({
       activeOrders={activeOrders}
       allOrders={allOrders}
       advanceOrder={advanceOrder}
+      editOrder={editOrder}
       now={now}
       sound={sound}
       soundOn={soundOn}
@@ -2022,6 +2103,15 @@ interface BaristaViewProps {
   activeOrders: Order[];
   allOrders: Order[];
   advanceOrder: (id: string, status: OrderStatus) => void;
+  editOrder: (
+    id: string,
+    updates: {
+      customerName: string;
+      memberPhoneCode: string;
+      items: CartItem[];
+      status: OrderStatus;
+    }
+  ) => void;
   now: number;
   sound: ReturnType<typeof useOrderSound>;
   soundOn: boolean;
@@ -2046,6 +2136,7 @@ function BaristaView({
   activeOrders,
   allOrders,
   advanceOrder,
+  editOrder,
   now,
   sound,
   soundOn,
@@ -2236,9 +2327,11 @@ function BaristaView({
 
       {baristaTab === 'orders' && (
         <OrdersFeed
+          menu={menu}
           activeOrders={activeOrders}
           allOrders={allOrders}
           advanceOrder={advanceOrder}
+          editOrder={editOrder}
           now={now}
           historyFilter={historyFilter}
           setHistoryFilter={setHistoryFilter}
@@ -2521,9 +2614,11 @@ function StatChip({
 }
 
 function OrdersFeed({
+  menu,
   activeOrders,
   allOrders,
   advanceOrder,
+  editOrder,
   now,
   historyFilter,
   setHistoryFilter,
@@ -2532,9 +2627,19 @@ function OrdersFeed({
   selectedMonth,
   setSelectedMonth,
 }: {
+  menu: MenuItem[];
   activeOrders: Order[];
   allOrders: Order[];
   advanceOrder: (id: string, status: OrderStatus) => void;
+  editOrder: (
+    id: string,
+    updates: {
+      customerName: string;
+      memberPhoneCode: string;
+      items: CartItem[];
+      status: OrderStatus;
+    }
+  ) => void;
   now: number;
   historyFilter: 'today' | 'yesterday' | 'custom' | 'monthly' | 'all';
   setHistoryFilter: (
@@ -2545,6 +2650,8 @@ function OrdersFeed({
   selectedMonth: string;
   setSelectedMonth: (month: string) => void;
 }) {
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
   const filteredHistory = useMemo(() => {
     if (historyFilter === 'all') {
       return allOrders.filter((o) => o.status !== 'pending');
@@ -2728,6 +2835,7 @@ function OrdersFeed({
               key={o.id}
               order={o}
               advanceOrder={advanceOrder}
+              onEdit={() => setEditingOrder(o)}
               now={now}
             />
           ))}
@@ -2749,11 +2857,24 @@ function OrdersFeed({
               key={o.id}
               order={o}
               advanceOrder={advanceOrder}
+              onEdit={() => setEditingOrder(o)}
               now={now}
               isHistory
             />
           ))}
         </div>
+      )}
+
+      {editingOrder && (
+        <OrderEditModal
+          order={editingOrder}
+          menu={menu}
+          onClose={() => setEditingOrder(null)}
+          onSave={(updates) => {
+            editOrder(editingOrder.id, updates);
+            setEditingOrder(null);
+          }}
+        />
       )}
     </div>
   );
@@ -2762,11 +2883,13 @@ function OrdersFeed({
 function OrderCard({
   order,
   advanceOrder,
+  onEdit,
   now,
   isHistory = false,
 }: {
   order: Order;
   advanceOrder: (id: string, status: OrderStatus) => void;
+  onEdit: () => void;
   now: number;
   isHistory?: boolean;
 }) {
@@ -2811,11 +2934,20 @@ function OrderCard({
             </span>
           )}
         </div>
-        <span
-          className={`text-xs font-black px-2.5 py-1 rounded-full border ${statusMeta.cls}`}
-        >
-          {statusMeta.label}
-        </span>
+        <div className="flex flex-col items-end gap-1.5">
+          <span
+            className={`text-xs font-black px-2.5 py-1 rounded-full border ${statusMeta.cls}`}
+          >
+            {statusMeta.label}
+          </span>
+          <button
+            onClick={onEdit}
+            title="แก้ไขออเดอร์นี้ (Edit order)"
+            className="flex items-center gap-1 text-[11px] font-bold text-neutral-400 hover:text-teal-300 px-2 py-1 rounded-lg hover:bg-teal-400/10 border border-transparent hover:border-teal-400/30 transition-colors"
+          >
+            <Pencil size={12} /> แก้ไข
+          </button>
+        </div>
       </div>
 
       <div className="relative mt-3 space-y-2">
@@ -2866,6 +2998,307 @@ function OrderCard({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  ORDER EDIT MODAL — แก้ไขออเดอร์ย้อนหลัง (แม้กด Done ไปแล้ว)         */
+/* ------------------------------------------------------------------ */
+
+function OrderEditModal({
+  order,
+  menu,
+  onClose,
+  onSave,
+}: {
+  order: Order;
+  menu: MenuItem[];
+  onClose: () => void;
+  onSave: (updates: {
+    customerName: string;
+    memberPhoneCode: string;
+    items: CartItem[];
+    status: OrderStatus;
+  }) => void;
+}) {
+  const [customerName, setCustomerName] = useState<string>(order.customerName);
+  const [memberPhoneCode, setMemberPhoneCode] = useState<string>(
+    order.memberPhoneCode || ''
+  );
+  const [status, setStatus] = useState<OrderStatus>(order.status);
+  const [items, setItems] = useState<CartItem[]>(
+    order.items.map((i) => ({ ...i }))
+  );
+  const [addItemId, setAddItemId] = useState<string>('');
+
+  const grandTotal = items.reduce((sum, i) => sum + i.total, 0);
+
+  function updateQty(idx: number, delta: number) {
+    setItems((prev) =>
+      prev
+        .map((it, i) => {
+          if (i !== idx) return it;
+          const newQty = it.qty + delta;
+          if (newQty <= 0) return null;
+          return { ...it, qty: newQty, total: it.unitPrice * newQty };
+        })
+        .filter(Boolean) as CartItem[]
+    );
+  }
+
+  function updateUnitPrice(idx: number, value: number) {
+    const price = Math.max(0, value || 0);
+    setItems((prev) =>
+      prev.map((it, i) =>
+        i === idx ? { ...it, unitPrice: price, total: price * it.qty } : it
+      )
+    );
+  }
+
+  function removeItem(idx: number) {
+    setItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function handleAddItem() {
+    const menuItem = menu.find((m) => m.id === addItemId);
+    if (!menuItem) return;
+    const newItem: CartItem = {
+      cartId: `${menuItem.id}-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2, 6)}`,
+      itemId: menuItem.id,
+      name: menuItem.name,
+      nameTh: menuItem.nameTh,
+      theme: menuItem.theme,
+      sweetness: 100,
+      qty: 1,
+      unitPrice: menuItem.price,
+      total: menuItem.price,
+    };
+    setItems((prev) => [...prev, newItem]);
+    setAddItemId('');
+  }
+
+  function handleSave() {
+    if (items.length === 0) {
+      alert('ออเดอร์ต้องมีอย่างน้อย 1 รายการ กรุณาเพิ่มรายการก่อนบันทึก');
+      return;
+    }
+    onSave({ customerName, memberPhoneCode, items, status });
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative w-full sm:max-w-lg bg-[#0B0F14] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto shadow-[0_0_60px_-10px_rgba(0,0,0,0.85)]">
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="text-lg font-black text-white flex items-center gap-2">
+            <Pencil size={18} className="text-teal-400" /> แก้ไขออเดอร์ #
+            {order.id.slice(-5)}
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {(order.status === 'done' || order.status === 'cancelled') && (
+          <p className="mb-4 text-xs font-bold text-amber-300 bg-amber-400/10 border border-amber-400/25 rounded-xl px-3 py-2">
+            ⚠️ ออเดอร์นี้ {order.status === 'done' ? 'ทำเสร็จแล้ว' : 'ถูกยกเลิกแล้ว'}{' '}
+            — การแก้ไขจะคำนวณแต้มสะสมของสมาชิกใหม่ให้อัตโนมัติ (หักแต้มเดิม
+            แล้วเติมแต้มใหม่ตามยอดที่แก้ไข)
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+              ชื่อลูกค้า
+            </label>
+            <div className="relative">
+              <User
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
+              />
+              <input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="w-full pl-8 pr-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+              เบอร์สมาชิก (4 หลัก)
+            </label>
+            <input
+              value={memberPhoneCode}
+              onChange={(e) =>
+                setMemberPhoneCode(e.target.value.replace(/\D/g, '').slice(0, 4))
+              }
+              placeholder="เว้นว่างถ้าไม่ใช่สมาชิก"
+              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-amber-300 placeholder:text-neutral-600 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+            สถานะออเดอร์
+          </label>
+          <div className="flex gap-2">
+            {(
+              [
+                { key: 'pending', label: 'รอดำเนินการ', cls: 'amber' },
+                { key: 'done', label: 'เสร็จสิ้น', cls: 'emerald' },
+                { key: 'cancelled', label: 'ยกเลิก', cls: 'rose' },
+              ] as { key: OrderStatus; label: string; cls: string }[]
+            ).map((s) => (
+              <button
+                key={s.key}
+                onClick={() => setStatus(s.key)}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-extrabold border transition-colors ${
+                  status === s.key
+                    ? s.cls === 'amber'
+                      ? 'bg-amber-500/20 border-amber-400/60 text-amber-300'
+                      : s.cls === 'emerald'
+                      ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300'
+                      : 'bg-rose-500/20 border-rose-400/60 text-rose-300'
+                    : 'bg-white/[0.03] border-white/10 text-neutral-400 hover:border-white/25'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-3 flex items-center justify-between">
+          <label className="block text-xs font-bold text-neutral-400">
+            รายการเครื่องดื่ม
+          </label>
+          <span className="text-xs font-mono text-neutral-500">
+            {items.length} รายการ
+          </span>
+        </div>
+
+        <div className="space-y-2 mb-3">
+          {items.map((item, idx) => (
+            <div
+              key={item.cartId}
+              className="rounded-xl bg-white/[0.03] border border-white/10 p-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-extrabold text-white truncate">
+                    {item.nameTh}
+                  </p>
+                  <p className="text-xs text-neutral-400 truncate">
+                    {item.name} · หวาน {item.sweetness}%
+                  </p>
+                </div>
+                <button
+                  onClick={() => removeItem(idx)}
+                  title="ลบรายการนี้"
+                  className="shrink-0 p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 mt-2.5">
+                <div className="flex items-center gap-2 bg-white/[0.04] border border-white/10 rounded-lg px-2 py-1">
+                  <button
+                    onClick={() => updateQty(idx, -1)}
+                    className="p-1 text-neutral-300 hover:text-white"
+                  >
+                    <Minus size={13} />
+                  </button>
+                  <span className="w-5 text-center font-mono text-sm text-white">
+                    {item.qty}
+                  </span>
+                  <button
+                    onClick={() => updateQty(idx, 1)}
+                    className="p-1 text-neutral-300 hover:text-white"
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Tag size={13} className="text-neutral-500" />
+                  <input
+                    type="number"
+                    min={0}
+                    value={item.unitPrice}
+                    onChange={(e) =>
+                      updateUnitPrice(idx, Number(e.target.value))
+                    }
+                    className="w-16 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                  <span className="text-xs text-neutral-500">/แก้ว</span>
+                </div>
+
+                <span className="font-mono font-extrabold text-amber-300 text-sm">
+                  ฿{item.total}
+                </span>
+              </div>
+            </div>
+          ))}
+
+          {items.length === 0 && (
+            <div className="text-center py-6 text-xs font-bold text-rose-300 border border-dashed border-rose-500/30 rounded-xl">
+              ไม่มีรายการ — กรุณาเพิ่มเมนูอย่างน้อย 1 รายการ
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 mb-5">
+          <select
+            value={addItemId}
+            onChange={(e) => setAddItemId(e.target.value)}
+            className="flex-1 px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+          >
+            <option value="">+ เพิ่มเมนูที่ถูกต้อง...</option>
+            {menu.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nameTh} ({m.name}) · ฿{m.price}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleAddItem}
+            disabled={!addItemId}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 shrink-0 ${
+              addItemId
+                ? 'bg-teal-500/20 border border-teal-400/50 text-teal-300 hover:bg-teal-500/30'
+                : 'bg-white/[0.03] border border-white/10 text-neutral-600 cursor-not-allowed'
+            }`}
+          >
+            <Plus size={15} /> เพิ่ม
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between mb-5 pt-3 border-t border-white/10">
+          <span className="text-sm text-neutral-400 font-bold">ยอดรวมใหม่</span>
+          <span className="font-mono font-black text-2xl text-amber-400">
+            ฿{grandTotal}
+          </span>
+        </div>
+
+        <button
+          onClick={handleSave}
+          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-gradient-to-r from-teal-400 to-teal-300 text-black font-black text-sm active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(45,212,191,0.6)]"
+        >
+          <Save size={17} /> บันทึกการแก้ไข (Save Changes)
+        </button>
+      </div>
     </div>
   );
 }
