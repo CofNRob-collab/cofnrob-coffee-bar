@@ -55,6 +55,9 @@ import {
   UserX,
   Lock,
   LogOut,
+  Receipt,
+  Home,
+  Wallet,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -85,6 +88,7 @@ const auth = getAuth(app);
 type ThemeType = 'blue' | 'brown' | 'teal' | 'gray' | 'green';
 type CategoryType = 'ICED COFFEE' | 'HOT COFFEE' | 'MATCHA & TEA' | 'OTHERS';
 type OrderStatus = 'pending' | 'cancelled' | 'done';
+type ExpenseCategory = 'ingredient' | 'rent' | 'utility' | 'other';
 
 interface MenuItem {
   id: string;
@@ -118,6 +122,18 @@ interface Order {
   total: number;
   createdAt: number;
   status: OrderStatus;
+}
+
+interface Expense {
+  id: string;
+  description: string;
+  category: ExpenseCategory;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  total: number;
+  date: string; // 'YYYY-MM-DD' วันที่ซื้อจริง (บาริสต้าเลือกเอง)
+  createdAt: number; // เวลาที่บันทึกรายการ
 }
 
 interface MemberData {
@@ -540,8 +556,9 @@ export default function App() {
   const [sweetness, setSweetness] = useState<number>(100);
   const [qty, setQty] = useState<number>(1);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [baristaTab, setBaristaTab] = useState<
-    'orders' | 'points' | 'stock' | 'editor'
+    'orders' | 'points' | 'stock' | 'editor' | 'expenses'
   >('orders');
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState<number>(Date.now());
@@ -673,6 +690,35 @@ export default function App() {
     });
 
     return () => unsubscribe();
+  }, []);
+
+  /* ------------------------------------------------------------------ */
+  /*  FIREBASE EXPENSE TRACKING SYNCING                                 */
+  /* ------------------------------------------------------------------ */
+  useEffect(() => {
+    const expensesRef = ref(db, 'expenses');
+    const unsubscribeExpenses = onValue(expensesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const parsedExpenses: Expense[] = Object.keys(data).map((key) => ({
+          id: key,
+          description: data[key].description || '',
+          category: data[key].category || 'other',
+          quantity: data[key].quantity ?? 1,
+          unit: data[key].unit || '',
+          unitPrice: data[key].unitPrice ?? 0,
+          total: data[key].total ?? 0,
+          date: data[key].date || new Date().toISOString().split('T')[0],
+          createdAt: data[key].createdAt || Date.now(),
+        }));
+        parsedExpenses.sort((a, b) => b.createdAt - a.createdAt);
+        setExpenses(parsedExpenses);
+      } else {
+        setExpenses([]);
+      }
+    });
+
+    return () => unsubscribeExpenses();
   }, []);
 
   useEffect(() => {
@@ -906,8 +952,7 @@ export default function App() {
       const oldSnap = await get(oldMemberRef);
       if (oldSnap.exists()) {
         const oldPoints = oldSnap.val().points || 0;
-        const pointsToRevert =
-          original.earnedPoints || original.total / 10;
+        const pointsToRevert = original.earnedPoints || original.total / 10;
         await update(oldMemberRef, {
           points: Math.max(0, oldPoints - pointsToRevert),
           updatedAt: Date.now(),
@@ -944,6 +989,41 @@ export default function App() {
     });
 
     setToast('แก้ไขออเดอร์เรียบร้อยแล้ว (Order updated)');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  EXPENSE TRACKING FUNCTIONS — บันทึกค่าใช้จ่าย/ต้นทุนประจำวัน       */
+  /* ------------------------------------------------------------------ */
+
+  function addExpense(entry: {
+    description: string;
+    category: ExpenseCategory;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+    date: string;
+  }) {
+    const total = entry.quantity * entry.unitPrice;
+    const expensesRef = ref(db, 'expenses');
+    const newExpenseRef = push(expensesRef);
+    set(newExpenseRef, {
+      description: entry.description.trim() || 'รายการค่าใช้จ่าย',
+      category: entry.category,
+      quantity: entry.quantity,
+      unit: entry.unit.trim(),
+      unitPrice: entry.unitPrice,
+      total,
+      date: entry.date,
+      createdAt: Date.now(),
+    });
+    setToast(
+      `บันทึกค่าใช้จ่าย "${entry.description}" (฿${total}) เรียบร้อยแล้ว`
+    );
+  }
+
+  function deleteExpense(id: string) {
+    set(ref(db, `expenses/${id}`), null);
+    setToast('ลบรายการค่าใช้จ่ายเรียบร้อยแล้ว');
   }
 
   /* ------------------------------------------------------------------ */
@@ -1016,6 +1096,9 @@ export default function App() {
           allOrders={orders}
           advanceOrder={advanceOrder}
           editOrder={editOrder}
+          expenses={expenses}
+          addExpense={addExpense}
+          deleteExpense={deleteExpense}
           now={now}
           sound={sound}
           soundOn={soundOn}
@@ -2000,8 +2083,10 @@ interface BaristaContainerProps {
   authLoading: boolean;
   menu: MenuItem[];
   toggleStock: (id: string) => void;
-  baristaTab: 'orders' | 'points' | 'stock' | 'editor';
-  setBaristaTab: (tab: 'orders' | 'points' | 'stock' | 'editor') => void;
+  baristaTab: 'orders' | 'points' | 'stock' | 'editor' | 'expenses';
+  setBaristaTab: (
+    tab: 'orders' | 'points' | 'stock' | 'editor' | 'expenses'
+  ) => void;
   activeOrders: Order[];
   allOrders: Order[];
   advanceOrder: (id: string, status: OrderStatus) => void;
@@ -2014,6 +2099,16 @@ interface BaristaContainerProps {
       status: OrderStatus;
     }
   ) => void;
+  expenses: Expense[];
+  addExpense: (entry: {
+    description: string;
+    category: ExpenseCategory;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+    date: string;
+  }) => void;
+  deleteExpense: (id: string) => void;
   now: number;
   sound: ReturnType<typeof useOrderSound>;
   soundOn: boolean;
@@ -2040,6 +2135,9 @@ function BaristaContainer({
   allOrders,
   advanceOrder,
   editOrder,
+  expenses,
+  addExpense,
+  deleteExpense,
   now,
   sound,
   soundOn,
@@ -2077,6 +2175,9 @@ function BaristaContainer({
       allOrders={allOrders}
       advanceOrder={advanceOrder}
       editOrder={editOrder}
+      expenses={expenses}
+      addExpense={addExpense}
+      deleteExpense={deleteExpense}
       now={now}
       sound={sound}
       soundOn={soundOn}
@@ -2098,8 +2199,10 @@ interface BaristaViewProps {
   user: any;
   menu: MenuItem[];
   toggleStock: (id: string) => void;
-  baristaTab: 'orders' | 'points' | 'stock' | 'editor';
-  setBaristaTab: (tab: 'orders' | 'points' | 'stock' | 'editor') => void;
+  baristaTab: 'orders' | 'points' | 'stock' | 'editor' | 'expenses';
+  setBaristaTab: (
+    tab: 'orders' | 'points' | 'stock' | 'editor' | 'expenses'
+  ) => void;
   activeOrders: Order[];
   allOrders: Order[];
   advanceOrder: (id: string, status: OrderStatus) => void;
@@ -2112,6 +2215,16 @@ interface BaristaViewProps {
       status: OrderStatus;
     }
   ) => void;
+  expenses: Expense[];
+  addExpense: (entry: {
+    description: string;
+    category: ExpenseCategory;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+    date: string;
+  }) => void;
+  deleteExpense: (id: string) => void;
   now: number;
   sound: ReturnType<typeof useOrderSound>;
   soundOn: boolean;
@@ -2137,6 +2250,9 @@ function BaristaView({
   allOrders,
   advanceOrder,
   editOrder,
+  expenses,
+  addExpense,
+  deleteExpense,
   now,
   sound,
   soundOn,
@@ -2323,6 +2439,17 @@ function BaristaView({
         >
           <Pencil size={16} /> Edit Menu & Prices
         </button>
+
+        <button
+          onClick={() => setBaristaTab('expenses')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
+            baristaTab === 'expenses'
+              ? 'bg-rose-400 text-black'
+              : 'text-neutral-300 hover:text-neutral-100'
+          }`}
+        >
+          <Receipt size={16} /> บันทึกค่าใช้จ่าย (Expenses)
+        </button>
       </div>
 
       {baristaTab === 'orders' && (
@@ -2355,6 +2482,423 @@ function BaristaView({
           setIsAddingNew={setIsAddingNew}
         />
       )}
+
+      {baristaTab === 'expenses' && (
+        <ExpenseTracker
+          expenses={expenses}
+          addExpense={addExpense}
+          deleteExpense={deleteExpense}
+          now={now}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  EXPENSE TRACKER — บันทึกค่าใช้จ่ายในการซื้อวัตถุดิบ/ค่าใช้จ่ายร้าน  */
+/* ------------------------------------------------------------------ */
+
+const EXPENSE_CATEGORY_META: Record<
+  ExpenseCategory,
+  { icon: LucideIcon; label: string; colorCls: string; chipCls: string }
+> = {
+  ingredient: {
+    icon: ShoppingBag,
+    label: 'วัตถุดิบ (นม/กาแฟ/น้ำ ฯลฯ)',
+    colorCls: 'text-teal-300',
+    chipCls: 'bg-teal-500/15 border-teal-400/30 text-teal-300',
+  },
+  rent: {
+    icon: Home,
+    label: 'ค่าเช่าร้าน',
+    colorCls: 'text-amber-300',
+    chipCls: 'bg-amber-500/15 border-amber-400/30 text-amber-300',
+  },
+  utility: {
+    icon: Zap,
+    label: 'ค่าน้ำ/ค่าไฟ/สาธารณูปโภค',
+    colorCls: 'text-sky-300',
+    chipCls: 'bg-sky-500/15 border-sky-400/30 text-sky-300',
+  },
+  other: {
+    icon: Tag,
+    label: 'อื่นๆ',
+    colorCls: 'text-neutral-300',
+    chipCls: 'bg-white/10 border-white/20 text-neutral-300',
+  },
+};
+
+function ExpenseTracker({
+  expenses,
+  addExpense,
+  deleteExpense,
+  now,
+}: {
+  expenses: Expense[];
+  addExpense: (entry: {
+    description: string;
+    category: ExpenseCategory;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+    date: string;
+  }) => void;
+  deleteExpense: (id: string) => void;
+  now: number;
+}) {
+  const todayStr = new Date(now).toISOString().split('T')[0];
+
+  const [category, setCategory] = useState<ExpenseCategory>('ingredient');
+  const [description, setDescription] = useState<string>('');
+  const [date, setDate] = useState<string>(todayStr);
+  const [quantity, setQuantity] = useState<number>(1);
+  const [unit, setUnit] = useState<string>('');
+  const [unitPrice, setUnitPrice] = useState<number>(0);
+
+  const [historyFilter, setHistoryFilter] = useState<
+    'today' | 'yesterday' | 'custom' | 'monthly' | 'all'
+  >('today');
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    todayStr.slice(0, 7)
+  );
+
+  const previewTotal = Math.max(0, quantity) * Math.max(0, unitPrice);
+
+  function handleSubmit() {
+    if (!description.trim()) {
+      alert('กรุณาระบุรายละเอียดค่าใช้จ่าย เช่น "นมสด 10 ลิตร"');
+      return;
+    }
+    if (quantity <= 0 || unitPrice < 0) {
+      alert('กรุณาระบุจำนวนและราคาให้ถูกต้อง');
+      return;
+    }
+    addExpense({ description, category, quantity, unit, unitPrice, date });
+    setDescription('');
+    setQuantity(1);
+    setUnit('');
+    setUnitPrice(0);
+  }
+
+  const filteredExpenses = useMemo(() => {
+    if (historyFilter === 'all') return expenses;
+
+    const nowDate = new Date(now);
+    const startOfToday = new Date(
+      nowDate.getFullYear(),
+      nowDate.getMonth(),
+      nowDate.getDate()
+    ).getTime();
+    const endOfToday = startOfToday + 24 * 60 * 60 * 1000;
+
+    if (historyFilter === 'today') {
+      return expenses.filter(
+        (e) =>
+          e.date === todayStr ||
+          (e.createdAt >= startOfToday && e.createdAt < endOfToday)
+      );
+    }
+    if (historyFilter === 'yesterday') {
+      const yStart = startOfToday - 24 * 60 * 60 * 1000;
+      const yDateStr = new Date(yStart).toISOString().split('T')[0];
+      return expenses.filter(
+        (e) =>
+          e.date === yDateStr ||
+          (e.createdAt >= yStart && e.createdAt < startOfToday)
+      );
+    }
+    if (historyFilter === 'custom') {
+      return expenses.filter((e) => e.date === selectedDate);
+    }
+    if (historyFilter === 'monthly') {
+      return expenses.filter((e) => e.date.startsWith(selectedMonth));
+    }
+    return expenses;
+  }, [expenses, historyFilter, selectedDate, selectedMonth, now, todayStr]);
+
+  const totalForPeriod = filteredExpenses.reduce((s, e) => s + e.total, 0);
+  const byCategory = useMemo(() => {
+    const map: Record<ExpenseCategory, number> = {
+      ingredient: 0,
+      rent: 0,
+      utility: 0,
+      other: 0,
+    };
+    filteredExpenses.forEach((e) => {
+      map[e.category] = (map[e.category] || 0) + e.total;
+    });
+    return map;
+  }, [filteredExpenses]);
+
+  return (
+    <div className="mt-6 grid lg:grid-cols-[380px_1fr] gap-5">
+      {/* ฟอร์มบันทึกรายการใหม่ */}
+      <div className="rounded-2xl bg-[#0D1117] border border-white/10 p-5 h-fit">
+        <h2 className="text-base font-extrabold text-rose-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <Receipt size={18} /> บันทึกค่าใช้จ่ายใหม่
+        </h2>
+
+        <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+          หมวดหมู่
+        </label>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {(Object.keys(EXPENSE_CATEGORY_META) as ExpenseCategory[]).map(
+            (cat) => {
+              const meta = EXPENSE_CATEGORY_META[cat];
+              const Icon = meta.icon;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setCategory(cat)}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-colors ${
+                    category === cat
+                      ? meta.chipCls
+                      : 'bg-white/[0.03] border-white/10 text-neutral-500 hover:border-white/25'
+                  }`}
+                >
+                  <Icon size={14} /> {meta.label}
+                </button>
+              );
+            }
+          )}
+        </div>
+
+        <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+          รายละเอียด
+        </label>
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder='เช่น "นมสด ตราหมี", "ค่าเช่าร้านเดือน ส.ค."'
+          className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-neutral-600 mb-4 focus:outline-none focus:ring-2 focus:ring-rose-400"
+        />
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+              วันที่ซื้อ
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+              หน่วย (ไม่บังคับ)
+            </label>
+            <input
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              placeholder="ลิตร / ถุง / ครั้ง"
+              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-rose-400"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+              จำนวน
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={quantity}
+              onChange={(e) => setQuantity(Number(e.target.value))}
+              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+              ราคา/หน่วย (฿)
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={unitPrice}
+              onChange={(e) => setUnitPrice(Number(e.target.value))}
+              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
+          <span className="text-sm text-neutral-400 font-bold">รวม</span>
+          <span className="font-mono font-black text-xl text-rose-300">
+            ฿{previewTotal.toFixed(0)}
+          </span>
+        </div>
+
+        <button
+          onClick={handleSubmit}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-rose-400 to-rose-300 text-black font-black text-sm active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(244,63,94,0.5)]"
+        >
+          <Save size={16} /> บันทึกรายการ
+        </button>
+      </div>
+
+      {/* ประวัติ + สรุปยอดรวม */}
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex flex-wrap gap-3">
+            <div className="px-4 py-2.5 rounded-xl bg-[#0D1117] border border-rose-400/30 flex flex-col">
+              <span className="font-mono font-black text-xl text-rose-300">
+                ฿{totalForPeriod.toFixed(0)}
+              </span>
+              <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
+                รวมค่าใช้จ่ายช่วงที่เลือก
+              </span>
+            </div>
+            {(Object.keys(EXPENSE_CATEGORY_META) as ExpenseCategory[]).map(
+              (cat) => {
+                const meta = EXPENSE_CATEGORY_META[cat];
+                if (byCategory[cat] <= 0) return null;
+                return (
+                  <div
+                    key={cat}
+                    className="px-3.5 py-2.5 rounded-xl bg-[#0D1117] border border-white/10 flex flex-col"
+                  >
+                    <span
+                      className={`font-mono font-black text-base ${meta.colorCls}`}
+                    >
+                      ฿{byCategory[cat].toFixed(0)}
+                    </span>
+                    <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
+                      {meta.label}
+                    </span>
+                  </div>
+                );
+              }
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 bg-white/[0.04] p-1.5 rounded-xl border border-white/10 text-xs">
+            <span className="text-neutral-300 px-2 flex items-center gap-1 font-bold">
+              <Calendar size={14} className="text-rose-400" /> ตัวกรอง:
+            </span>
+            <button
+              onClick={() => setHistoryFilter('today')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+                historyFilter === 'today'
+                  ? 'bg-rose-400 text-black shadow-md'
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              วันนี้
+            </button>
+            <button
+              onClick={() => setHistoryFilter('yesterday')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+                historyFilter === 'yesterday'
+                  ? 'bg-rose-400 text-black shadow-md'
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              เมื่อวาน
+            </button>
+            <button
+              onClick={() => setHistoryFilter('custom')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+                historyFilter === 'custom'
+                  ? 'bg-rose-400 text-black shadow-md'
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              เลือกวันเอง
+            </button>
+            <button
+              onClick={() => setHistoryFilter('monthly')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+                historyFilter === 'monthly'
+                  ? 'bg-rose-400 text-black shadow-md'
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              รายเดือน
+            </button>
+            <button
+              onClick={() => setHistoryFilter('all')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+                historyFilter === 'all'
+                  ? 'bg-rose-400 text-black shadow-md'
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              ทั้งหมด
+            </button>
+
+            {historyFilter === 'custom' && (
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="ml-1 bg-white/[0.06] border border-rose-400/40 text-rose-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-rose-400 cursor-pointer"
+              />
+            )}
+            {historyFilter === 'monthly' && (
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="ml-1 bg-white/[0.06] border border-rose-400/40 text-rose-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-rose-400 cursor-pointer"
+              />
+            )}
+          </div>
+        </div>
+
+        {filteredExpenses.length === 0 ? (
+          <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl text-neutral-400 text-sm font-bold">
+            ไม่พบรายการค่าใช้จ่ายในช่วงเวลาที่เลือก
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filteredExpenses.map((e) => {
+              const meta = EXPENSE_CATEGORY_META[e.category];
+              const Icon = meta.icon;
+              return (
+                <div
+                  key={e.id}
+                  className="flex items-center justify-between gap-3 rounded-2xl bg-[#0D1117] border border-white/10 px-4 py-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`shrink-0 w-9 h-9 rounded-xl border flex items-center justify-center ${meta.chipCls}`}
+                    >
+                      <Icon size={16} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-extrabold text-white truncate">
+                        {e.description}
+                      </p>
+                      <p className="text-xs text-neutral-400 font-mono">
+                        {e.date} · {e.quantity}
+                        {e.unit ? ` ${e.unit}` : ''} × ฿{e.unitPrice}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="font-mono font-black text-base text-rose-300">
+                      ฿{e.total.toFixed(0)}
+                    </span>
+                    <button
+                      onClick={() => deleteExpense(e.id)}
+                      title="ลบรายการนี้"
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-neutral-500 hover:text-rose-300"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -3035,15 +3579,16 @@ function OrderEditModal({
   const grandTotal = items.reduce((sum, i) => sum + i.total, 0);
 
   function updateQty(idx: number, delta: number) {
-    setItems((prev) =>
-      prev
-        .map((it, i) => {
-          if (i !== idx) return it;
-          const newQty = it.qty + delta;
-          if (newQty <= 0) return null;
-          return { ...it, qty: newQty, total: it.unitPrice * newQty };
-        })
-        .filter(Boolean) as CartItem[]
+    setItems(
+      (prev) =>
+        prev
+          .map((it, i) => {
+            if (i !== idx) return it;
+            const newQty = it.qty + delta;
+            if (newQty <= 0) return null;
+            return { ...it, qty: newQty, total: it.unitPrice * newQty };
+          })
+          .filter(Boolean) as CartItem[]
     );
   }
 
@@ -3110,8 +3655,9 @@ function OrderEditModal({
 
         {(order.status === 'done' || order.status === 'cancelled') && (
           <p className="mb-4 text-xs font-bold text-amber-300 bg-amber-400/10 border border-amber-400/25 rounded-xl px-3 py-2">
-            ⚠️ ออเดอร์นี้ {order.status === 'done' ? 'ทำเสร็จแล้ว' : 'ถูกยกเลิกแล้ว'}{' '}
-            — การแก้ไขจะคำนวณแต้มสะสมของสมาชิกใหม่ให้อัตโนมัติ (หักแต้มเดิม
+            ⚠️ ออเดอร์นี้{' '}
+            {order.status === 'done' ? 'ทำเสร็จแล้ว' : 'ถูกยกเลิกแล้ว'} —
+            การแก้ไขจะคำนวณแต้มสะสมของสมาชิกใหม่ให้อัตโนมัติ (หักแต้มเดิม
             แล้วเติมแต้มใหม่ตามยอดที่แก้ไข)
           </p>
         )}
@@ -3140,7 +3686,9 @@ function OrderEditModal({
             <input
               value={memberPhoneCode}
               onChange={(e) =>
-                setMemberPhoneCode(e.target.value.replace(/\D/g, '').slice(0, 4))
+                setMemberPhoneCode(
+                  e.target.value.replace(/\D/g, '').slice(0, 4)
+                )
               }
               placeholder="เว้นว่างถ้าไม่ใช่สมาชิก"
               className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-amber-300 placeholder:text-neutral-600 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-teal-400"
