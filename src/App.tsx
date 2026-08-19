@@ -58,6 +58,7 @@ import {
   Receipt,
   Home,
   Wallet,
+  BarChart3,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -3195,6 +3196,7 @@ function OrdersFeed({
   setSelectedMonth: (month: string) => void;
 }) {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [showSalesChart, setShowSalesChart] = useState<boolean>(false);
 
   const filteredHistory = useMemo(() => {
     if (historyFilter === 'all') {
@@ -3361,6 +3363,14 @@ function OrdersFeed({
               className="ml-1 bg-white/[0.06] border border-amber-400/40 text-amber-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
             />
           )}
+
+          <button
+            onClick={() => setShowSalesChart(true)}
+            title="ดูกราฟยอดขายรายเดือน (Monthly Sales Chart)"
+            className="ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold bg-teal-500/20 border border-teal-400/40 text-teal-300 hover:bg-teal-500/30 transition-colors"
+          >
+            <BarChart3 size={14} /> กราฟยอดขาย
+          </button>
         </div>
       </div>
 
@@ -3420,6 +3430,240 @@ function OrdersFeed({
           }}
         />
       )}
+
+      {showSalesChart && (
+        <SalesChartModal
+          orders={allOrders}
+          now={now}
+          onClose={() => setShowSalesChart(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  SALES CHART MODAL — กราฟยอดขายเพื่อเช็คช่วงพีค/ต่ำสุด               */
+/* ------------------------------------------------------------------ */
+
+const THAI_MONTHS_SHORT = [
+  'ม.ค.',
+  'ก.พ.',
+  'มี.ค.',
+  'เม.ย.',
+  'พ.ค.',
+  'มิ.ย.',
+  'ก.ค.',
+  'ส.ค.',
+  'ก.ย.',
+  'ต.ค.',
+  'พ.ย.',
+  'ธ.ค.',
+];
+
+function formatMonthLabel(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return `${THAI_MONTHS_SHORT[m - 1]} ${y}`;
+}
+
+function formatBaht(n: number): string {
+  if (n >= 1000) return `฿${(n / 1000).toFixed(1)}k`;
+  return `฿${n.toFixed(0)}`;
+}
+
+function SalesChartModal({
+  orders,
+  now,
+  onClose,
+}: {
+  orders: Order[];
+  now: number;
+  onClose: () => void;
+}) {
+  const [mode, setMode] = useState<'monthly' | 'daily'>('monthly');
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    new Date(now).toISOString().slice(0, 7)
+  );
+
+  const doneOrders = useMemo(
+    () => orders.filter((o) => o.status === 'done'),
+    [orders]
+  );
+
+  const monthlyData = useMemo(() => {
+    const map: Record<string, number> = {};
+    doneOrders.forEach((o) => {
+      const key = new Date(o.createdAt).toISOString().slice(0, 7);
+      map[key] = (map[key] || 0) + o.total;
+    });
+    return Object.keys(map)
+      .sort((a, b) => a.localeCompare(b))
+      .map((key) => ({ key, label: formatMonthLabel(key), total: map[key] }));
+  }, [doneOrders]);
+
+  const dailyData = useMemo(() => {
+    const map: Record<string, number> = {};
+    doneOrders.forEach((o) => {
+      const key = new Date(o.createdAt).toISOString().slice(0, 10);
+      if (key.startsWith(selectedMonth)) {
+        map[key] = (map[key] || 0) + o.total;
+      }
+    });
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const result: { key: string; label: string; total: number }[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+      result.push({ key, label: String(d), total: map[key] || 0 });
+    }
+    return result;
+  }, [doneOrders, selectedMonth]);
+
+  const chartData = mode === 'monthly' ? monthlyData : dailyData;
+  const maxVal = Math.max(0, ...chartData.map((d) => d.total));
+  const nonZero = chartData.filter((d) => d.total > 0);
+  const peakEntry =
+    maxVal > 0 ? chartData.find((d) => d.total === maxVal) : undefined;
+  const lowEntry = nonZero.length
+    ? nonZero.reduce((a, b) => (a.total <= b.total ? a : b))
+    : undefined;
+  const periodTotal = chartData.reduce((s, d) => s + d.total, 0);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative w-full sm:max-w-3xl bg-[#0B0F14] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto shadow-[0_0_60px_-10px_rgba(0,0,0,0.85)]">
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="text-lg font-black text-white flex items-center gap-2">
+            <BarChart3 size={18} className="text-teal-400" /> กราฟยอดขาย (Sales
+            Chart)
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+          <div className="flex items-center gap-1.5 p-1.5 rounded-xl bg-white/[0.04] border border-white/10">
+            <button
+              onClick={() => setMode('monthly')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                mode === 'monthly'
+                  ? 'bg-teal-400 text-black'
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              รายเดือน (ทั้งหมด)
+            </button>
+            <button
+              onClick={() => setMode('daily')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                mode === 'daily'
+                  ? 'bg-teal-400 text-black'
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              รายวัน (เลือกเดือน)
+            </button>
+          </div>
+
+          {mode === 'daily' && (
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-white/[0.06] border border-teal-400/40 text-teal-300 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-teal-400 cursor-pointer"
+            />
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-3 mb-5">
+          <div className="px-4 py-2.5 rounded-xl bg-[#0D1117] border border-white/10 flex flex-col">
+            <span className="font-mono font-black text-lg text-teal-300">
+              {formatBaht(periodTotal)}
+            </span>
+            <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
+              ยอดขายรวมในช่วงนี้
+            </span>
+          </div>
+          {peakEntry && (
+            <div className="px-4 py-2.5 rounded-xl bg-[#0D1117] border border-emerald-400/30 flex flex-col">
+              <span className="font-mono font-black text-lg text-emerald-300">
+                {formatBaht(peakEntry.total)}
+              </span>
+              <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
+                พีคสุด · {peakEntry.label}
+              </span>
+            </div>
+          )}
+          {lowEntry && (
+            <div className="px-4 py-2.5 rounded-xl bg-[#0D1117] border border-rose-400/30 flex flex-col">
+              <span className="font-mono font-black text-lg text-rose-300">
+                {formatBaht(lowEntry.total)}
+              </span>
+              <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
+                ต่ำสุด · {lowEntry.label}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {chartData.length === 0 || maxVal === 0 ? (
+          <div className="text-center py-16 border border-dashed border-white/10 rounded-2xl text-neutral-400 text-sm font-bold">
+            ยังไม่มีข้อมูลยอดขายที่เสร็จสิ้นในช่วงนี้
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-[#0D1117] border border-white/10 p-4 overflow-x-auto">
+            <div className="flex items-end gap-1.5 h-56 min-w-fit">
+              {chartData.map((d) => {
+                const heightPct = maxVal > 0 ? (d.total / maxVal) * 100 : 0;
+                const isPeak = peakEntry && d.key === peakEntry.key;
+                const isLow = lowEntry && d.key === lowEntry.key && d.total > 0;
+                return (
+                  <div
+                    key={d.key}
+                    title={`${d.label}: ฿${d.total.toLocaleString()}`}
+                    className="flex flex-col items-center justify-end shrink-0 h-full"
+                    style={{ width: mode === 'monthly' ? '68px' : '26px' }}
+                  >
+                    {d.total > 0 && heightPct > 18 && (
+                      <span className="text-[9px] font-mono font-bold text-neutral-300 mb-1 whitespace-nowrap">
+                        {formatBaht(d.total)}
+                      </span>
+                    )}
+                    <div
+                      className={`w-full rounded-t-md transition-all ${
+                        isPeak
+                          ? 'bg-emerald-400'
+                          : isLow
+                          ? 'bg-rose-400'
+                          : 'bg-teal-400/60'
+                      }`}
+                      style={{
+                        height: `${d.total > 0 ? Math.max(heightPct, 4) : 1}%`,
+                      }}
+                    />
+                    <span className="text-[9px] text-neutral-500 mt-1.5 font-mono whitespace-nowrap">
+                      {d.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <p className="mt-3 text-xs text-neutral-500">
+          * นับเฉพาะออเดอร์ที่สถานะ "เสร็จสิ้น (Done)" เท่านั้น — แท่งสีเขียว =
+          ช่วงที่ยอดขายสูงสุด, แท่งสีแดง = ช่วงที่ยอดขายต่ำสุด
+        </p>
+      </div>
     </div>
   );
 }
