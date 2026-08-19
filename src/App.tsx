@@ -3452,6 +3452,18 @@ function OrderCard({
     },
   }[order.status];
 
+  const [cashReceived, setCashReceived] = useState<string>('');
+  const cashNum = parseFloat(cashReceived) || 0;
+  const change = cashNum - order.total;
+
+  function addCash(amount: number) {
+    setCashReceived((prev) => String((parseFloat(prev) || 0) + amount));
+  }
+
+  function clearCash() {
+    setCashReceived('');
+  }
+
   return (
     <div
       className={`relative rounded-2xl border ${
@@ -3525,6 +3537,71 @@ function OrderCard({
           {isHistory ? fmtDate(order.createdAt) : timeAgo(order.createdAt, now)}
         </span>
       </div>
+
+      {!isHistory && order.status === 'pending' && (
+        <div className="relative mt-4 pt-3 border-t border-white/5">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-neutral-400 flex items-center gap-1.5">
+              <Wallet size={13} className="text-teal-400" />{' '}
+              เงินสดที่ลูกค้าให้มา
+            </label>
+            {cashReceived !== '' && (
+              <button
+                onClick={clearCash}
+                className="text-[10px] font-bold text-neutral-500 hover:text-rose-300 flex items-center gap-0.5"
+              >
+                <X size={11} /> ล้าง
+              </button>
+            )}
+          </div>
+
+          <input
+            type="number"
+            min={0}
+            value={cashReceived}
+            onChange={(e) => setCashReceived(e.target.value)}
+            placeholder="0"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-lg font-mono font-black text-white placeholder:text-neutral-600 mb-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+          />
+
+          <div className="flex flex-wrap gap-1.5 mb-2.5">
+            {[20, 50, 100, 500, 1000].map((bill) => (
+              <button
+                key={bill}
+                onClick={() => addCash(bill)}
+                className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-xs font-bold text-neutral-300 hover:border-teal-400/50 hover:text-teal-300 transition-colors"
+              >
+                +{bill}
+              </button>
+            ))}
+          </div>
+
+          {cashReceived !== '' && (
+            <div
+              className={`rounded-xl px-3.5 py-2.5 flex items-center justify-between border ${
+                change >= 0
+                  ? 'bg-emerald-500/15 border-emerald-400/40'
+                  : 'bg-rose-500/15 border-rose-400/40'
+              }`}
+            >
+              <span
+                className={`text-xs font-bold ${
+                  change >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                }`}
+              >
+                {change >= 0 ? 'เงินทอน (Change)' : 'ยังขาดอีก (Short by)'}
+              </span>
+              <span
+                className={`font-mono font-black text-xl ${
+                  change >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                }`}
+              >
+                ฿{Math.abs(change).toFixed(0)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {!isHistory && order.status === 'pending' && (
         <div className="relative mt-4 flex gap-2">
