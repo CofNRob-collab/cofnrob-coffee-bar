@@ -377,6 +377,7 @@ const MAIN_GROUPS: CategoryType[] = [
   'ICED COFFEE',
   'HOT COFFEE',
   'MATCHA & TEA',
+  'OTHERS',
 ];
 
 const CATEGORY_META: Record<CategoryType, CategoryMetaItem> = {
@@ -445,6 +446,32 @@ const SWEET_PRESETS = [
   { value: 100, label: '100%', labelTh: 'หวานปกติ' },
   { value: 120, label: '120%', labelTh: 'หวานมาก' },
 ];
+
+// ระดับความหวานพิเศษ 11 ระดับ เฉพาะเมนู Espresso, Cappucino, Mocha เท่านั้น
+// เมนูอื่นๆ ยังคงใช้ SWEET_PRESETS (6 ระดับ) ตามเดิมทุกประการ
+const SWEET_PRESETS_11_LEVEL = [
+  { value: 0, label: '0%', labelTh: 'ไม่หวาน' },
+  { value: 12, label: '12%', labelTh: 'ระดับ 12%' },
+  { value: 25, label: '25%', labelTh: 'ระดับ 25%' },
+  { value: 37, label: '37%', labelTh: 'ระดับ 37%' },
+  { value: 50, label: '50%', labelTh: 'หวานกลาง' },
+  { value: 62, label: '62%', labelTh: 'ระดับ 62%' },
+  { value: 75, label: '75%', labelTh: 'ระดับ 75%' },
+  { value: 87, label: '87%', labelTh: 'หวานปกติ' },
+  { value: 100, label: '100%', labelTh: 'ระดับ 100%' },
+  { value: 112, label: '112%', labelTh: 'ระดับ 112%' },
+  { value: 120, label: '120%', labelTh: 'หวานชลบุรี' },
+];
+
+// รายชื่อเมนูที่ใช้ระดับความหวาน 11 ระดับ (ครอบคลุมทั้งเวอร์ชันร้อนและเย็น)
+const ELEVEN_LEVEL_SWEETNESS_ITEMS = ['Espresso', 'Cappucino', 'Mocha'];
+
+function getSweetPresetsForItem(itemName: string) {
+  const isElevenLevelItem = ELEVEN_LEVEL_SWEETNESS_ITEMS.some((keyword) =>
+    itemName.includes(keyword)
+  );
+  return isElevenLevelItem ? SWEET_PRESETS_11_LEVEL : SWEET_PRESETS;
+}
 
 function sweetnessColor(v: number): string {
   if (v <= 25) return 'text-sky-300';
@@ -1540,7 +1567,7 @@ function CustomerView({
             <h2 className="text-lg font-extrabold text-neutral-200 mb-4">
               เลือกหมวดหมู่เครื่องดื่ม (Select Category)
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {MAIN_GROUPS.map((catKey) => {
                 const meta = CATEGORY_META[catKey];
                 const Icon = meta.icon;
@@ -1883,6 +1910,7 @@ function CustomizeModal({
   onInstantOrder,
 }: CustomizeModalProps) {
   const total = item.price * qty;
+  const activeSweetPresets = getSweetPresetsForItem(item.name);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -1930,7 +1958,7 @@ function CustomizeModal({
             className="w-full accent-amber-400 h-2.5 bg-white/10 rounded-lg cursor-pointer"
           />
           <div className="flex flex-wrap gap-1.5 mt-3.5">
-            {SWEET_PRESETS.map((p) => (
+            {activeSweetPresets.map((p) => (
               <button
                 key={p.value}
                 onClick={() => setSweetness(p.value)}
