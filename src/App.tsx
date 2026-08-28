@@ -451,15 +451,15 @@ const SWEET_PRESETS = [
 // เมนูอื่นๆ ยังคงใช้ SWEET_PRESETS (6 ระดับ) ตามเดิมทุกประการ
 const SWEET_PRESETS_11_LEVEL = [
   { value: 0, label: '0%', labelTh: 'ไม่หวาน' },
-  { value: 12, label: '12%', labelTh: 'ระดับ 12%' },
-  { value: 25, label: '25%', labelTh: 'ระดับ 25%' },
-  { value: 37, label: '37%', labelTh: 'ระดับ 37%' },
+  { value: 12, labelTh: 'ระดับ 12%' },
+  { value: 25, label: '25%', labelTh: 'หวานหน่อยๆ' },
+  { value: 37, labelTh: 'ระดับ 37%' },
   { value: 50, label: '50%', labelTh: 'หวานกลาง' },
-  { value: 62, label: '62%', labelTh: 'ระดับ 62%' },
-  { value: 75, label: '75%', labelTh: 'ระดับ 75%' },
-  { value: 87, label: '87%', labelTh: 'หวานปกติ' },
-  { value: 100, label: '100%', labelTh: 'ระดับ 100%' },
-  { value: 112, label: '112%', labelTh: 'ระดับ 112%' },
+  { value: 62, labelTh: 'ระดับ 62%' },
+  { value: 75, label: '75%', labelTh: 'หวานกำลังดี' },
+  { value: 87, labelTh: 'หวานปกติ' },
+  { value: 100, labelTh: 'ระดับ 100%' },
+  { value: 112, labelTh: 'ระดับ 112%' },
   { value: 120, label: '120%', labelTh: 'หวานชลบุรี' },
 ];
 
