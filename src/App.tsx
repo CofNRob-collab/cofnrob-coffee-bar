@@ -457,8 +457,8 @@ const SWEET_PRESETS_11_LEVEL = [
   { value: 50, label: '50%', labelTh: 'หวานกลาง' },
   { value: 62, labelTh: 'ระดับ 62%' },
   { value: 75, label: '75%', labelTh: 'หวานกำลังดี' },
-  { value: 87, labelTh: 'หวานปกติ' },
-  { value: 100, labelTh: 'ระดับ 100%' },
+  { value: 87, labelTh: 'ระดับ 87%' },
+  { value: 100, label: '100%',labelTh: 'หวานปกติ' },
   { value: 112, labelTh: 'ระดับ 112%' },
   { value: 120, label: '120%', labelTh: 'หวานชลบุรี' },
 ];
