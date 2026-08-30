@@ -458,7 +458,7 @@ const SWEET_PRESETS_11_LEVEL = [
   { value: 62, labelTh: 'ระดับ 62%' },
   { value: 75, label: '75%', labelTh: 'หวานกำลังดี' },
   { value: 87, labelTh: 'ระดับ 87%' },
-  { value: 100, label: '100%',labelTh: 'หวานปกติ' },
+  { value: 100, label: '100%', labelTh: 'หวานปกติ' },
   { value: 112, labelTh: 'ระดับ 112%' },
   { value: 120, label: '120%', labelTh: 'หวานชลบุรี' },
 ];
@@ -586,7 +586,7 @@ export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [baristaTab, setBaristaTab] = useState<
-    'orders' | 'points' | 'stock' | 'editor' | 'expenses'
+    'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses'
   >('orders');
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState<number>(Date.now());
@@ -2112,9 +2112,15 @@ interface BaristaContainerProps {
   authLoading: boolean;
   menu: MenuItem[];
   toggleStock: (id: string) => void;
-  baristaTab: 'orders' | 'points' | 'stock' | 'editor' | 'expenses';
+  baristaTab:
+    | 'orders'
+    | 'points'
+    | 'customers'
+    | 'stock'
+    | 'editor'
+    | 'expenses';
   setBaristaTab: (
-    tab: 'orders' | 'points' | 'stock' | 'editor' | 'expenses'
+    tab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses'
   ) => void;
   activeOrders: Order[];
   allOrders: Order[];
@@ -2228,9 +2234,15 @@ interface BaristaViewProps {
   user: any;
   menu: MenuItem[];
   toggleStock: (id: string) => void;
-  baristaTab: 'orders' | 'points' | 'stock' | 'editor' | 'expenses';
+  baristaTab:
+    | 'orders'
+    | 'points'
+    | 'customers'
+    | 'stock'
+    | 'editor'
+    | 'expenses';
   setBaristaTab: (
-    tab: 'orders' | 'points' | 'stock' | 'editor' | 'expenses'
+    tab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses'
   ) => void;
   activeOrders: Order[];
   allOrders: Order[];
@@ -2448,6 +2460,17 @@ function BaristaView({
         </button>
 
         <button
+          onClick={() => setBaristaTab('customers')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
+            baristaTab === 'customers'
+              ? 'bg-amber-400 text-black'
+              : 'text-neutral-300 hover:text-neutral-100'
+          }`}
+        >
+          <Users size={16} /> Customers / Members
+        </button>
+
+        <button
           onClick={() => setBaristaTab('stock')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
             baristaTab === 'stock'
@@ -2499,6 +2522,8 @@ function BaristaView({
       )}
 
       {baristaTab === 'points' && <PointsManager setToast={setToast} />}
+
+      {baristaTab === 'customers' && <CustomerMembers allOrders={allOrders} />}
 
       {baristaTab === 'stock' && (
         <StockControl menu={menu} toggleStock={toggleStock} />
@@ -3160,6 +3185,339 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+interface CustomerMemberRow {
+  phone4: string;
+  points: number;
+  updatedAt: number;
+}
+
+function CustomerMembers({ allOrders }: { allOrders: Order[] }) {
+  const [members, setMembers] = useState<CustomerMemberRow[]>([]);
+  const [search, setSearch] = useState<string>('');
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
+
+  useEffect(() => {
+    const membersRef = ref(db, 'members');
+    const unsubscribe = onValue(membersRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        setMembers([]);
+        return;
+      }
+
+      const list: CustomerMemberRow[] = Object.keys(data).map((key) => ({
+        phone4: data[key]?.phone4 || key,
+        points: Number(data[key]?.points || 0),
+        updatedAt: Number(data[key]?.updatedAt || 0),
+      }));
+
+      list.sort((a, b) => b.updatedAt - a.updatedAt);
+      setMembers(list);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const memberStats = useMemo(() => {
+    const map: Record<
+      string,
+      {
+        orders: Order[];
+        completedOrders: Order[];
+        totalSpent: number;
+        earnedPoints: number;
+      }
+    > = {};
+
+    allOrders.forEach((order) => {
+      const phone = order.memberPhoneCode?.trim();
+      if (!phone || phone.length !== 4) return;
+
+      if (!map[phone]) {
+        map[phone] = {
+          orders: [],
+          completedOrders: [],
+          totalSpent: 0,
+          earnedPoints: 0,
+        };
+      }
+
+      map[phone].orders.push(order);
+
+      if (order.status === 'done') {
+        map[phone].completedOrders.push(order);
+        map[phone].totalSpent += order.total;
+        map[phone].earnedPoints += order.earnedPoints || order.total / 10;
+      }
+    });
+
+    return map;
+  }, [allOrders]);
+
+  const filteredMembers = useMemo(() => {
+    const q = search.trim();
+    if (!q) return members;
+    return members.filter((member) => member.phone4.includes(q));
+  }, [members, search]);
+
+  const selectedMember = selectedPhone
+    ? members.find((member) => member.phone4 === selectedPhone) || null
+    : null;
+
+  const selectedStats = selectedPhone ? memberStats[selectedPhone] : undefined;
+  const selectedOrders = selectedStats
+    ? [...selectedStats.orders].sort((a, b) => b.createdAt - a.createdAt)
+    : [];
+
+  const totalMembers = members.length;
+  const membersWithHistory = members.filter(
+    (member) => (memberStats[member.phone4]?.orders.length || 0) > 0
+  ).length;
+
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+        <div>
+          <h2 className="text-xl font-black text-white flex items-center gap-2">
+            <Users size={22} className="text-amber-400" /> Customer / Members
+          </h2>
+          <p className="text-sm text-neutral-400 font-semibold mt-1">
+            ข้อมูลสมาชิกจาก Firebase และประวัติการสั่งซื้อจาก Orders
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <StatChip
+            label="สมาชิกทั้งหมด"
+            value={totalMembers}
+            color="text-amber-300"
+          />
+          <StatChip
+            label="มีประวัติซื้อ"
+            value={membersWithHistory}
+            color="text-emerald-300"
+          />
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-[360px_1fr] gap-5">
+        <div className="rounded-2xl bg-[#0D1117] border border-white/10 p-4 h-fit">
+          <div className="relative mb-4">
+            <Search
+              size={17}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500"
+            />
+            <input
+              value={search}
+              onChange={(e) =>
+                setSearch(e.target.value.replace(/\D/g, '').slice(0, 4))
+              }
+              inputMode="numeric"
+              maxLength={4}
+              placeholder="ค้นหาสมาชิกด้วยเลข 4 ตัวท้าย"
+              className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-amber-300 placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+          </div>
+
+          {filteredMembers.length === 0 ? (
+            <div className="text-center py-10 border border-dashed border-white/10 rounded-xl text-neutral-500 text-sm font-bold">
+              ไม่พบข้อมูลสมาชิก
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
+              {filteredMembers.map((member) => {
+                const stats = memberStats[member.phone4];
+                const orderCount = stats?.orders.length || 0;
+                const isSelected = selectedPhone === member.phone4;
+
+                return (
+                  <button
+                    key={member.phone4}
+                    onClick={() => setSelectedPhone(member.phone4)}
+                    className={`w-full text-left p-3.5 rounded-xl border transition-all ${
+                      isSelected
+                        ? 'bg-amber-400/10 border-amber-400/50 shadow-[0_0_18px_rgba(245,158,11,0.12)]'
+                        : 'bg-white/[0.02] border-white/10 hover:border-white/25 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center shrink-0">
+                          <User size={17} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-mono font-black text-white text-base">
+                            #{member.phone4}
+                          </p>
+                          <p className="text-xs text-neutral-500 font-semibold">
+                            {orderCount} ออเดอร์
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-mono font-black text-amber-300">
+                          {member.points}
+                        </p>
+                        <p className="text-[10px] text-neutral-500">คะแนน</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div>
+          {!selectedMember ? (
+            <div className="min-h-[300px] rounded-2xl bg-[#0D1117] border border-dashed border-white/10 flex items-center justify-center text-center p-8">
+              <div>
+                <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center">
+                  <History size={28} />
+                </div>
+                <p className="text-base font-bold text-neutral-300">
+                  เลือกสมาชิกเพื่อดูรายละเอียด
+                </p>
+                <p className="text-xs text-neutral-500 mt-1">
+                  คะแนนปัจจุบัน ยอดซื้อ และประวัติการสั่งซื้อ
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-2xl bg-[#0D1117] border border-amber-400/30 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center">
+                      <User size={24} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-neutral-400 font-bold">
+                        สมาชิก
+                      </p>
+                      <h3 className="text-2xl font-black text-white font-mono">
+                        #{selectedMember.phone4}
+                      </h3>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-amber-300 font-bold">
+                      คะแนนปัจจุบัน
+                    </p>
+                    <p className="text-3xl font-black text-amber-400 font-mono">
+                      {selectedMember.points}
+                      <span className="text-sm ml-1">คะแนน</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
+                  <StatChip
+                    label="ออเดอร์ทั้งหมด"
+                    value={selectedStats?.orders.length || 0}
+                    color="text-cyan-300"
+                  />
+                  <StatChip
+                    label="ซื้อสำเร็จ"
+                    value={selectedStats?.completedOrders.length || 0}
+                    color="text-emerald-300"
+                  />
+                  <StatChip
+                    label="ยอดซื้อสะสม"
+                    value={`฿${selectedStats?.totalSpent || 0}`}
+                    color="text-teal-300"
+                  />
+                  <StatChip
+                    label="แต้มจากออเดอร์"
+                    value={(selectedStats?.earnedPoints || 0).toFixed(1)}
+                    color="text-amber-300"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-[#0D1117] border border-white/10 p-5">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-base font-black text-white flex items-center gap-2">
+                      <History size={18} className="text-amber-400" />
+                      ประวัติการสั่งซื้อ
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      แสดงข้อมูลจาก orders ที่ผูกกับสมาชิก #
+                      {selectedMember.phone4}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedOrders.length === 0 ? (
+                  <div className="py-12 text-center border border-dashed border-white/10 rounded-xl text-neutral-500 text-sm font-bold">
+                    สมาชิกนี้ยังไม่มีประวัติการสั่งซื้อ
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
+                    {selectedOrders.map((order) => (
+                      <div
+                        key={order.id}
+                        className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                          <div>
+                            <p className="text-xs text-neutral-500 font-mono">
+                              #{order.id.slice(-5)} · {fmtDate(order.createdAt)}
+                            </p>
+                            <p className="text-sm font-extrabold text-white mt-0.5">
+                              {order.items
+                                .map(
+                                  (item) =>
+                                    `${item.qty > 1 ? `${item.qty}× ` : ''}${
+                                      item.nameTh
+                                    }`
+                                )
+                                .join(', ')}
+                            </p>
+                          </div>
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-black border ${
+                              order.status === 'done'
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
+                                : order.status === 'cancelled'
+                                ? 'bg-rose-500/15 text-rose-300 border-rose-400/30'
+                                : 'bg-amber-500/15 text-amber-300 border-amber-400/30'
+                            }`}
+                          >
+                            {order.status === 'done'
+                              ? 'DONE'
+                              : order.status === 'cancelled'
+                              ? 'CANCELLED'
+                              : 'PENDING'}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
+                          <span className="text-xs text-neutral-500">
+                            {order.status === 'done'
+                              ? `ได้รับ +${
+                                  order.earnedPoints || order.total / 10
+                                } แต้ม`
+                              : 'ยังไม่เพิ่มแต้ม'}
+                          </span>
+                          <span className="font-mono font-black text-amber-300">
+                            ฿{order.total}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
