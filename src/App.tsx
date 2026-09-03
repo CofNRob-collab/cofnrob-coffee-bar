@@ -140,8 +140,8 @@ interface Expense {
   unit: string;
   unitPrice: number;
   total: number;
-  date: string; // 'YYYY-MM-DD' วันที่ซื้อจริง (บาริสต้าเลือกเอง)
-  createdAt: number; // เวลาที่บันทึกรายการ
+  date: string;
+  createdAt: number;
 }
 
 interface MemberData {
@@ -454,8 +454,6 @@ const SWEET_PRESETS = [
   { value: 120, label: '120%', labelTh: 'หวานมาก' },
 ];
 
-// ระดับความหวานพิเศษ 11 ระดับ เฉพาะเมนู Espresso, Cappucino, Mocha เท่านั้น
-// เมนูอื่นๆ ยังคงใช้ SWEET_PRESETS (6 ระดับ) ตามเดิมทุกประการ
 const SWEET_PRESETS_11_LEVEL = [
   { value: 0, label: '0%', labelTh: 'ไม่หวาน' },
   { value: 12, labelTh: 'ระดับ 12%' },
@@ -465,12 +463,11 @@ const SWEET_PRESETS_11_LEVEL = [
   { value: 62, labelTh: 'ระดับ 62%' },
   { value: 75, label: '75%', labelTh: 'หวานกำลังดี' },
   { value: 87, labelTh: 'ระดับ 87%' },
-  { value: 100, label: '100%',labelTh: 'หวานปกติ' },
+  { value: 100, label: '100%', labelTh: 'หวานปกติ' },
   { value: 112, labelTh: 'ระดับ 112%' },
   { value: 120, label: '120%', labelTh: 'หวานชลบุรี' },
 ];
 
-// รายชื่อเมนูที่ใช้ระดับความหวาน 11 ระดับ (ครอบคลุมทั้งเวอร์ชันร้อนและเย็น)
 const ELEVEN_LEVEL_SWEETNESS_ITEMS = ['Espresso', 'Cappucino', 'Mocha'];
 
 function getSweetPresetsForItem(itemName: string) {
@@ -606,15 +603,11 @@ export default function App() {
     'ร้านปิดให้บริการชั่วคราว'
   );
 
-  // Firebase Auth State
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
 
   const sound = useOrderSound(soundOn);
 
-  /* ------------------------------------------------------------------ */
-  /*  FIREBASE AUTH LISTENER                                            */
-  /* ------------------------------------------------------------------ */
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -623,9 +616,6 @@ export default function App() {
     return () => unsubscribeAuth();
   }, []);
 
-  /* ------------------------------------------------------------------ */
-  /*  FIREBASE MENU DATA SYNCING                                        */
-  /* ------------------------------------------------------------------ */
   useEffect(() => {
     const menuRef = ref(db, 'menuItems');
     const unsubscribeMenu = onValue(menuRef, (snapshot) => {
@@ -732,9 +722,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  /* ------------------------------------------------------------------ */
-  /*  FIREBASE EXPENSE TRACKING SYNCING                                 */
-  /* ------------------------------------------------------------------ */
   useEffect(() => {
     const expensesRef = ref(db, 'expenses');
     const unsubscribeExpenses = onValue(expensesRef, (snapshot) => {
@@ -821,7 +808,7 @@ export default function App() {
     setModalItem(null);
   }
 
-  function handleInstantOrder() {
+  async function handleInstantOrder(usePoints: boolean, instantNote: string) {
     if (!shopOpen) {
       setToast('ร้านปิดอยู่ ไม่สามารถส่งออเดอร์ได้');
       return;
@@ -830,8 +817,40 @@ export default function App() {
 
     const trimmedPhone = memberPhoneCode.trim();
     const isMember = trimmedPhone.length === 4;
-    const totalAmount = modalItem.price * qty;
-    const earnedPoints = isMember ? totalAmount / 10 : 0;
+    const originalPrice = modalItem.price * qty;
+    let redeemedPoints = 0;
+    let finalUnitPrice = modalItem.price;
+    let finalTotal = originalPrice;
+
+    if (usePoints) {
+      if (!isMember) {
+        setToast('กรุณากรอกเบอร์สมาชิก 4 หลักก่อนใช้แต้มแลกเมนู');
+        return;
+      }
+      const memberSnap = await get(ref(db, `members/${trimmedPhone}`));
+      if (!memberSnap.exists()) {
+        setToast(`ไม่พบสมาชิก #${trimmedPhone}`);
+        return;
+      }
+      const currentPoints = Number(memberSnap.val().points || 0);
+      if (currentPoints < originalPrice) {
+        setToast(`คะแนนไม่พอสำหรับแลกเมนูนี้ (ต้องใช้ ${originalPrice} แต้ม)`);
+        return;
+      }
+      redeemedPoints = originalPrice;
+      finalUnitPrice = 0;
+      finalTotal = 0;
+    }
+
+    const earnedPoints = isMember && !usePoints ? finalTotal / 10 : 0;
+    let memberPointsAfterRedeem = 0;
+
+    if (isMember && redeemedPoints > 0) {
+      const memberRef = ref(db, `members/${trimmedPhone}`);
+      const snapshot = await get(memberRef);
+      const currentPoints = Number(snapshot.val().points || 0);
+      memberPointsAfterRedeem = currentPoints - redeemedPoints;
+    }
 
     const singleItem: CartItem = {
       cartId: `${modalItem.id}-${Date.now()}-${Math.random()
@@ -843,8 +862,11 @@ export default function App() {
       theme: modalItem.theme,
       sweetness,
       qty,
-      unitPrice: modalItem.price,
-      total: totalAmount,
+      unitPrice: finalUnitPrice,
+      originalUnitPrice: modalItem.price,
+      total: finalTotal,
+      redeemedWithPoints: usePoints,
+      pointsCost: redeemedPoints,
     };
 
     const newOrderData = {
@@ -852,19 +874,49 @@ export default function App() {
       memberPhoneCode: isMember ? trimmedPhone : '',
       earnedPoints: earnedPoints,
       pointsProcessed: false,
+      redeemedPoints,
+      pointsRedeemed: redeemedPoints > 0,
+      pointsRefunded: false,
+      customerNote: instantNote.trim(),
       items: [singleItem],
-      total: totalAmount,
+      total: finalTotal,
       createdAt: Date.now(),
       status: 'pending',
     };
 
     const ordersRef = ref(db, 'orders');
     const newOrderRef = push(ordersRef);
-    set(newOrderRef, newOrderData);
+
+    try {
+      if (isMember && redeemedPoints > 0) {
+        await set(ref(db, `members/${trimmedPhone}`), {
+          phone4: trimmedPhone,
+          points: memberPointsAfterRedeem,
+          updatedAt: Date.now(),
+        });
+      }
+      await set(newOrderRef, newOrderData);
+    } catch (err) {
+      if (isMember && redeemedPoints > 0) {
+        const memberRef = ref(db, `members/${trimmedPhone}`);
+        const rollbackSnap = await get(memberRef);
+        if (rollbackSnap.exists()) {
+          const rollbackPoints = Number(rollbackSnap.val().points || 0);
+          await update(memberRef, {
+            points: rollbackPoints + redeemedPoints,
+            updatedAt: Date.now(),
+          });
+        }
+      }
+      setToast('ไม่สามารถส่งออเดอร์ได้ กรุณาลองใหม่อีกครั้ง');
+      return;
+    }
 
     setToast(
-      isMember
-        ? `สั่งทันทีเรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้ากดรับ/ทำเสร็จ)`
+      redeemedPoints > 0
+        ? `สั่งทันทีเรียบร้อย! ใช้ ${redeemedPoints} แต้มแลกเมนูสำเร็จ`
+        : isMember
+        ? `สั่งทันทีเรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้าทำเสร็จ)`
         : 'สั่งทันทีเรียบร้อย! (รายการของ Guest)'
     );
     setModalItem(null);
@@ -884,13 +936,17 @@ export default function App() {
               const newQty = item.qty + delta;
               if (newQty <= 0) return null;
               const basePrice = item.redeemedWithPoints
-                ? item.originalUnitPrice ?? menu.find((m) => m.id === item.itemId)?.price ?? item.unitPrice
+                ? item.originalUnitPrice ??
+                  menu.find((m) => m.id === item.itemId)?.price ??
+                  item.unitPrice
                 : item.unitPrice;
               return {
                 ...item,
                 qty: newQty,
                 unitPrice: item.redeemedWithPoints ? basePrice : item.unitPrice,
-                total: item.redeemedWithPoints ? basePrice * newQty : item.unitPrice * newQty,
+                total: item.redeemedWithPoints
+                  ? basePrice * newQty
+                  : item.unitPrice * newQty,
                 redeemedWithPoints: false,
                 pointsCost: 0,
               };
@@ -921,13 +977,19 @@ export default function App() {
     const currentPoints = Number(memberSnap.val().points || 0);
     const alreadySelected = cart.reduce(
       (sum, item) =>
-        sum + (item.redeemedWithPoints ? item.pointsCost || item.unitPrice * item.qty : 0),
+        sum +
+        (item.redeemedWithPoints
+          ? item.pointsCost || item.unitPrice * item.qty
+          : 0),
       0
     );
-    const pointsCost = (target.originalUnitPrice ?? target.unitPrice) * target.qty;
+    const pointsCost =
+      (target.originalUnitPrice ?? target.unitPrice) * target.qty;
 
     if (currentPoints - alreadySelected < pointsCost) {
-      setToast(`คะแนนไม่พอสำหรับ ${target.nameTh} (ต้องใช้ ${pointsCost} แต้ม)`);
+      setToast(
+        `คะแนนไม่พอสำหรับ ${target.nameTh} (ต้องใช้ ${pointsCost} แต้ม)`
+      );
       return;
     }
 
@@ -952,7 +1014,10 @@ export default function App() {
     setCart((prev) =>
       prev.map((item) => {
         if (item.cartId !== cartId) return item;
-        const originalPrice = item.originalUnitPrice ?? menu.find((m) => m.id === item.itemId)?.price ?? 0;
+        const originalPrice =
+          item.originalUnitPrice ??
+          menu.find((m) => m.id === item.itemId)?.price ??
+          0;
         return {
           ...item,
           unitPrice: originalPrice,
@@ -975,7 +1040,14 @@ export default function App() {
     const trimmedPhone = memberPhoneCode.trim();
     const isMember = trimmedPhone.length === 4;
     const redeemedPoints = isMember
-      ? cart.reduce((sum, item) => sum + (item.redeemedWithPoints ? item.pointsCost || item.unitPrice * item.qty : 0), 0)
+      ? cart.reduce(
+          (sum, item) =>
+            sum +
+            (item.redeemedWithPoints
+              ? item.pointsCost || item.unitPrice * item.qty
+              : 0),
+          0
+        )
       : 0;
     const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
     const earnedPoints = isMember ? totalAmount / 10 : 0;
@@ -990,7 +1062,9 @@ export default function App() {
       }
       const currentPoints = Number(snapshot.val().points || 0);
       if (currentPoints < redeemedPoints) {
-        setToast(`คะแนนไม่พอสำหรับการแลก (มี ${currentPoints} แต้ม แต่ต้องใช้ ${redeemedPoints} แต้ม)`);
+        setToast(
+          `คะแนนไม่พอสำหรับการแลก (มี ${currentPoints} แต้ม แต่ต้องใช้ ${redeemedPoints} แต้ม)`
+        );
         return false;
       }
       memberPointsAfterRedeem = currentPoints - redeemedPoints;
@@ -1067,7 +1141,9 @@ export default function App() {
       const pointsToRefund = targetOrder.redeemedPoints || 0;
       const memberRef = ref(db, `members/${phone4}`);
       const snapshot = await get(memberRef);
-      const currentPoints = snapshot.exists() ? Number(snapshot.val().points || 0) : 0;
+      const currentPoints = snapshot.exists()
+        ? Number(snapshot.val().points || 0)
+        : 0;
       await set(memberRef, {
         phone4,
         points: currentPoints + pointsToRefund,
@@ -1078,7 +1154,9 @@ export default function App() {
         pointsRefunded: true,
       });
       sound.playDone();
-      setToast(`ยกเลิกออเดอร์และคืน ${pointsToRefund} แต้มให้สมาชิก #${phone4} แล้ว`);
+      setToast(
+        `ยกเลิกออเดอร์และคืน ${pointsToRefund} แต้มให้สมาชิก #${phone4} แล้ว`
+      );
       return;
     }
 
@@ -1111,13 +1189,6 @@ export default function App() {
     }
   }
 
-  /**
-   * แก้ไขออเดอร์ย้อนหลัง (รวมถึงออเดอร์ที่กด Done ไปแล้ว) เพื่อแก้ไขข้อผิดพลาด
-   * เช่น กดเมนูผิด, จำนวนผิด, ราคาผิด, หรือใส่เบอร์สมาชิกผิด
-   * แต้มสะสมจะถูกคำนวณใหม่ให้สอดคล้องกับข้อมูลที่แก้ไขเสมอ:
-   *   1) ถ้าออเดอร์เดิมเคยให้แต้มไปแล้ว จะหักแต้มเดิมออกจากสมาชิกคนเดิมก่อน
-   *   2) ถ้าสถานะหลังแก้ไขเป็น "done" และมีเบอร์สมาชิก จะคำนวณแต้มใหม่จากยอดใหม่แล้วเติมให้
-   */
   async function editOrder(
     id: string,
     updates: {
@@ -1134,7 +1205,6 @@ export default function App() {
     const trimmedPhone = updates.memberPhoneCode.trim();
     const isMember = trimmedPhone.length === 4;
 
-    // 1) หักแต้มเดิมออกจากสมาชิกคนเดิม ถ้าออเดอร์นี้เคยประมวลผลแต้มไปแล้ว
     if (original.pointsProcessed && original.memberPhoneCode) {
       const oldMemberRef = ref(db, `members/${original.memberPhoneCode}`);
       const oldSnap = await get(oldMemberRef);
@@ -1148,7 +1218,6 @@ export default function App() {
       }
     }
 
-    // 2) ถ้าสถานะหลังแก้ไขคือ "done" และมีเบอร์สมาชิก ให้คำนวณแต้มใหม่แล้วเติมให้
     let newEarnedPoints = 0;
     let pointsProcessed = false;
 
@@ -1178,10 +1247,6 @@ export default function App() {
 
     setToast('แก้ไขออเดอร์เรียบร้อยแล้ว (Order updated)');
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  EXPENSE TRACKING FUNCTIONS — บันทึกค่าใช้จ่าย/ต้นทุนประจำวัน       */
-  /* ------------------------------------------------------------------ */
 
   function addExpense(entry: {
     description: string;
@@ -1213,10 +1278,6 @@ export default function App() {
     set(ref(db, `expenses/${id}`), null);
     setToast('ลบรายการค่าใช้จ่ายเรียบร้อยแล้ว');
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  PERSISTENT MENU MANAGEMENT FUNCTIONS                              */
-  /* ------------------------------------------------------------------ */
 
   function toggleStock(id: string) {
     const item = menu.find((m) => m.id === id);
@@ -1317,6 +1378,7 @@ export default function App() {
           onClose={closeModal}
           onAddToCart={addToCart}
           onInstantOrder={handleInstantOrder}
+          memberPhoneCode={memberPhoneCode}
         />
       )}
 
@@ -1508,7 +1570,6 @@ function CustomerView({
     null
   );
   const [memberInfo, setMemberInfo] = useState<MemberData | null>(null);
-
   const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(false);
 
   useEffect(() => {
@@ -1564,11 +1625,9 @@ function CustomerView({
 
   const visibleItems = useMemo(() => {
     if (!selectedCategory) return [];
-
     const catItems = menu.filter(
       (m) => m.category === selectedCategory && m.available
     );
-
     if (
       selectedCategory === 'ICED COFFEE' ||
       selectedCategory === 'HOT COFFEE'
@@ -1578,7 +1637,6 @@ function CustomerView({
       );
       return [...catItems, ...extraShots];
     }
-
     return catItems;
   }, [menu, selectedCategory]);
 
@@ -1591,7 +1649,6 @@ function CustomerView({
         />
       )}
 
-      {/* Header */}
       <div className="pb-6 mb-6 border-b border-white/15">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3.5">
@@ -1976,7 +2033,8 @@ function CustomerView({
                           {item.redeemedWithPoints
                             ? 'ยกเลิกใช้แต้ม'
                             : `🎁 ใช้ ${
-                                (item.originalUnitPrice ?? item.unitPrice) * item.qty
+                                (item.originalUnitPrice ?? item.unitPrice) *
+                                item.qty
                               } แต้มแลกเมนูนี้`}
                         </button>
                       )}
@@ -2034,12 +2092,6 @@ function CustomerView({
                     ? `จะได้รับคะแนนสะสมจากยอดชำระ: +${cartTotal / 10} คะแนน`
                     : 'สั่งซื้อในฐานะ Guest (ไม่ได้รับคะแนน)'}
                 </div>
-
-                {cart.some((item) => item.redeemedWithPoints) && (
-                  <div className="mb-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-400/30 text-emerald-300 text-xs font-black">
-                    🎁 ใช้แต้มแลกแล้ว {cart.reduce((sum, item) => sum + (item.redeemedWithPoints ? item.pointsCost || 0 : 0), 0)} แต้ม · เมนูที่แลกคิดราคา ฿0
-                  </div>
-                )}
 
                 <div className="mb-3">
                   <label className="block text-xs font-bold text-neutral-400 mb-1.5">
@@ -2114,7 +2166,8 @@ interface CustomizeModalProps {
   setQty: (val: number) => void;
   onClose: () => void;
   onAddToCart: () => void;
-  onInstantOrder: () => void;
+  onInstantOrder: (usePoints: boolean, instantNote: string) => void;
+  memberPhoneCode: string;
 }
 
 function CustomizeModal({
@@ -2126,9 +2179,14 @@ function CustomizeModal({
   onClose,
   onAddToCart,
   onInstantOrder,
+  memberPhoneCode,
 }: CustomizeModalProps) {
+  const [instantNote, setInstantNote] = useState('');
+  const [usePoints, setUsePoints] = useState(false);
+
   const total = item.price * qty;
   const activeSweetPresets = getSweetPresetsForItem(item.name);
+  const isMember = memberPhoneCode.trim().length === 4;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -2216,10 +2274,39 @@ function CustomizeModal({
           </div>
         </div>
 
-        <div className="mt-6 flex items-center justify-between text-base">
+        {isMember && (
+          <div className="mt-5 p-3 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-amber-300 text-xs font-bold">
+              <Gift size={16} />
+              <span>ใช้แต้มแลกเมนูนี้ ({total} แต้ม)</span>
+            </div>
+            <input
+              type="checkbox"
+              checked={usePoints}
+              onChange={(e) => setUsePoints(e.target.checked)}
+              className="w-4 h-4 accent-amber-400 cursor-pointer"
+            />
+          </div>
+        )}
+
+        <div className="mt-4">
+          <label className="block text-xs font-bold text-neutral-400 mb-1">
+            ข้อความถึงบาริสต้า (สำหรับสั่งด่วน)
+          </label>
+          <input
+            type="text"
+            value={instantNote}
+            onChange={(e) => setInstantNote(e.target.value)}
+            maxLength={120}
+            placeholder="เช่น หวานน้อยพิเศษ, แยกน้ำแข็ง..."
+            className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+        </div>
+
+        <div className="mt-5 flex items-center justify-between text-base">
           <span className="text-neutral-300 font-bold">ราคารวม</span>
           <span className="font-mono font-black text-2xl text-amber-400">
-            ฿{total}
+            {usePoints ? '🎁 0 แต้ม' : `฿${total}`}
           </span>
         </div>
 
@@ -2231,20 +2318,16 @@ function CustomizeModal({
             <Plus size={18} /> เพิ่มลงตะกร้า
           </button>
           <button
-            onClick={onInstantOrder}
+            onClick={() => onInstantOrder(usePoints, instantNote)}
             className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-black text-sm sm:text-base active:scale-[0.98] transition-all shadow-[0_0_25px_-5px_rgba(245,158,11,0.6)]"
           >
-            <Send size={18} /> สั่งทันที
+            <Send size={18} /> สั่งด่วน
           </button>
         </div>
       </div>
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  FIREBASE AUTH LOGIN FORM                                          */
-/* ------------------------------------------------------------------ */
 
 function LoginScreen({ setToast }: { setToast: (msg: string) => void }) {
   const [email, setEmail] = useState('');
@@ -2330,7 +2413,13 @@ interface BaristaContainerProps {
   authLoading: boolean;
   menu: MenuItem[];
   toggleStock: (id: string) => void;
-  baristaTab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses';
+  baristaTab:
+    | 'orders'
+    | 'points'
+    | 'customers'
+    | 'stock'
+    | 'editor'
+    | 'expenses';
   setBaristaTab: (
     tab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses'
   ) => void;
@@ -2446,7 +2535,13 @@ interface BaristaViewProps {
   user: any;
   menu: MenuItem[];
   toggleStock: (id: string) => void;
-  baristaTab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses';
+  baristaTab:
+    | 'orders'
+    | 'points'
+    | 'customers'
+    | 'stock'
+    | 'editor'
+    | 'expenses';
   setBaristaTab: (
     tab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses'
   ) => void;
@@ -2641,7 +2736,6 @@ function BaristaView({
         </div>
       </div>
 
-      {/* Barista Nav Tabs */}
       <div className="flex flex-wrap items-center gap-1.5 p-1.5 mt-5 rounded-2xl bg-white/[0.04] border border-white/10 w-fit">
         <button
           onClick={() => setBaristaTab('orders')}
@@ -2729,9 +2823,7 @@ function BaristaView({
 
       {baristaTab === 'points' && <PointsManager setToast={setToast} />}
 
-      {baristaTab === 'customers' && (
-        <CustomersManager allOrders={allOrders} />
-      )}
+      {baristaTab === 'customers' && <CustomersManager allOrders={allOrders} />}
 
       {baristaTab === 'stock' && (
         <StockControl menu={menu} toggleStock={toggleStock} />
@@ -2757,37 +2849,33 @@ function BaristaView({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  EXPENSE TRACKER — บันทึกค่าใช้จ่ายในการซื้อวัตถุดิบ/ค่าใช้จ่ายร้าน  */
-/* ------------------------------------------------------------------ */
-
 const EXPENSE_CATEGORY_META: Record<
   ExpenseCategory,
   { icon: LucideIcon; label: string; colorCls: string; chipCls: string }
 > = {
   ingredient: {
-    icon: ShoppingBag,
-    label: 'วัตถุดิบ (นม/กาแฟ/น้ำ ฯลฯ)',
-    colorCls: 'text-teal-300',
-    chipCls: 'bg-teal-500/15 border-teal-400/30 text-teal-300',
+    icon: Coffee,
+    label: 'วัตถุดิบ (Ingredient)',
+    colorCls: 'text-amber-400',
+    chipCls: 'bg-amber-500/10 border-amber-400/30 text-amber-300',
   },
   rent: {
     icon: Home,
-    label: 'ค่าเช่าร้าน',
-    colorCls: 'text-amber-300',
-    chipCls: 'bg-amber-500/15 border-amber-400/30 text-amber-300',
+    label: 'ค่าเช่า (Rent)',
+    colorCls: 'text-teal-400',
+    chipCls: 'bg-teal-500/10 border-teal-400/30 text-teal-300',
   },
   utility: {
     icon: Zap,
-    label: 'ค่าน้ำ/ค่าไฟ/สาธารณูปโภค',
-    colorCls: 'text-sky-300',
-    chipCls: 'bg-sky-500/15 border-sky-400/30 text-sky-300',
+    label: 'ค่าน้ำ/ค่าไฟ (Utility)',
+    colorCls: 'text-sky-400',
+    chipCls: 'bg-sky-500/10 border-sky-400/30 text-sky-300',
   },
   other: {
     icon: Tag,
-    label: 'อื่นๆ',
-    colorCls: 'text-neutral-300',
-    chipCls: 'bg-white/10 border-white/20 text-neutral-300',
+    label: 'อื่นๆ (Other)',
+    colorCls: 'text-purple-400',
+    chipCls: 'bg-purple-500/10 border-purple-400/30 text-purple-300',
   },
 };
 
@@ -2809,350 +2897,197 @@ function ExpenseTracker({
   deleteExpense: (id: string) => void;
   now: number;
 }) {
-  const todayStr = new Date(now).toISOString().split('T')[0];
-
-  const [category, setCategory] = useState<ExpenseCategory>('ingredient');
-  const [description, setDescription] = useState<string>('');
-  const [date, setDate] = useState<string>(todayStr);
-  const [quantity, setQuantity] = useState<number>(1);
-  const [unit, setUnit] = useState<string>('');
+  const [desc, setDesc] = useState('');
+  const [cat, setCat] = useState<ExpenseCategory>('ingredient');
+  const [qty, setQty] = useState<number>(1);
+  const [unit, setUnit] = useState('ถุง');
   const [unitPrice, setUnitPrice] = useState<number>(0);
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const [historyFilter, setHistoryFilter] = useState<
-    'today' | 'yesterday' | 'custom' | 'monthly' | 'all'
-  >('today');
-  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
-  const [selectedMonth, setSelectedMonth] = useState<string>(
-    todayStr.slice(0, 7)
-  );
-
-  const previewTotal = Math.max(0, quantity) * Math.max(0, unitPrice);
-
-  function handleSubmit() {
-    if (!description.trim()) {
-      alert('กรุณาระบุรายละเอียดค่าใช้จ่าย เช่น "นมสด 10 ลิตร"');
-      return;
-    }
-    if (quantity <= 0 || unitPrice < 0) {
-      alert('กรุณาระบุจำนวนและราคาให้ถูกต้อง');
-      return;
-    }
-    addExpense({ description, category, quantity, unit, unitPrice, date });
-    setDescription('');
-    setQuantity(1);
-    setUnit('');
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!desc.trim()) return;
+    addExpense({
+      description: desc,
+      category: cat,
+      quantity: qty,
+      unit,
+      unitPrice,
+      date,
+    });
+    setDesc('');
+    setQty(1);
     setUnitPrice(0);
   }
 
-  const filteredExpenses = useMemo(() => {
-    if (historyFilter === 'all') return expenses;
-
-    const nowDate = new Date(now);
-    const startOfToday = new Date(
-      nowDate.getFullYear(),
-      nowDate.getMonth(),
-      nowDate.getDate()
-    ).getTime();
-    const endOfToday = startOfToday + 24 * 60 * 60 * 1000;
-
-    if (historyFilter === 'today') {
-      return expenses.filter(
-        (e) =>
-          e.date === todayStr ||
-          (e.createdAt >= startOfToday && e.createdAt < endOfToday)
-      );
-    }
-    if (historyFilter === 'yesterday') {
-      const yStart = startOfToday - 24 * 60 * 60 * 1000;
-      const yDateStr = new Date(yStart).toISOString().split('T')[0];
-      return expenses.filter(
-        (e) =>
-          e.date === yDateStr ||
-          (e.createdAt >= yStart && e.createdAt < startOfToday)
-      );
-    }
-    if (historyFilter === 'custom') {
-      return expenses.filter((e) => e.date === selectedDate);
-    }
-    if (historyFilter === 'monthly') {
-      return expenses.filter((e) => e.date.startsWith(selectedMonth));
-    }
-    return expenses;
-  }, [expenses, historyFilter, selectedDate, selectedMonth, now, todayStr]);
-
-  const totalForPeriod = filteredExpenses.reduce((s, e) => s + e.total, 0);
-  const byCategory = useMemo(() => {
-    const map: Record<ExpenseCategory, number> = {
-      ingredient: 0,
-      rent: 0,
-      utility: 0,
-      other: 0,
-    };
-    filteredExpenses.forEach((e) => {
-      map[e.category] = (map[e.category] || 0) + e.total;
-    });
-    return map;
-  }, [filteredExpenses]);
+  const totalExpenseAmount = expenses.reduce((sum, e) => sum + e.total, 0);
 
   return (
-    <div className="mt-6 grid lg:grid-cols-[380px_1fr] gap-5">
-      {/* ฟอร์มบันทึกรายการใหม่ */}
-      <div className="rounded-2xl bg-[#0D1117] border border-white/10 p-5 h-fit">
-        <h2 className="text-base font-extrabold text-rose-300 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Receipt size={18} /> บันทึกค่าใช้จ่ายใหม่
+    <div className="mt-6 space-y-6">
+      <div className="p-6 rounded-3xl bg-[#0D1117] border border-white/10 shadow-xl">
+        <h2 className="text-xl font-black text-white mb-4 flex items-center gap-2">
+          <Receipt className="text-rose-400" size={22} />{' '}
+          บันทึกรายจ่ายและต้นทุนร้าน
         </h2>
-
-        <label className="block text-xs font-bold text-neutral-400 mb-1.5">
-          หมวดหมู่
-        </label>
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {(Object.keys(EXPENSE_CATEGORY_META) as ExpenseCategory[]).map(
-            (cat) => {
-              const meta = EXPENSE_CATEGORY_META[cat];
-              const Icon = meta.icon;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setCategory(cat)}
-                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    category === cat
-                      ? meta.chipCls
-                      : 'bg-white/[0.03] border-white/10 text-neutral-500 hover:border-white/25'
-                  }`}
-                >
-                  <Icon size={14} /> {meta.label}
-                </button>
-              );
-            }
-          )}
-        </div>
-
-        <label className="block text-xs font-bold text-neutral-400 mb-1.5">
-          รายละเอียด
-        </label>
-        <input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder='เช่น "นมสด ตราหมี", "ค่าเช่าร้านเดือน ส.ค."'
-          className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-neutral-600 mb-4 focus:outline-none focus:ring-2 focus:ring-rose-400"
-        />
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <form
+          onSubmit={handleSubmit}
+          className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+        >
           <div>
-            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
-              วันที่ซื้อ
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              รายการ / ชื่อวัตถุดิบ
             </label>
             <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+              type="text"
+              required
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="เช่น เมล็ดกาแฟ Arabica, นมข้น..."
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
             />
           </div>
-          <div>
-            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
-              หน่วย (ไม่บังคับ)
-            </label>
-            <input
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              placeholder="ลิตร / ถุง / ครั้ง"
-              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-rose-400"
-            />
-          </div>
-        </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
-              จำนวน
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              หมวดหมู่รายจ่าย
             </label>
-            <input
-              type="number"
-              min={0}
-              value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))}
-              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
-            />
+            <select
+              value={cat}
+              onChange={(e) => setCat(e.target.value as ExpenseCategory)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#161b22] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+            >
+              <option value="ingredient">วัตถุดิบ (Ingredient)</option>
+              <option value="rent">ค่าเช่า (Rent)</option>
+              <option value="utility">ค่าน้ำ/ค่าไฟ (Utility)</option>
+              <option value="other">อื่นๆ (Other)</option>
+            </select>
           </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-1">
+              <label className="block text-xs font-bold text-neutral-300 mb-1">
+                จำนวน
+              </label>
+              <input
+                type="number"
+                min={0.1}
+                step="any"
+                value={qty}
+                onChange={(e) => setQty(Number(e.target.value))}
+                className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-bold text-neutral-300 mb-1">
+                หน่วย
+              </label>
+              <input
+                type="text"
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                placeholder="ถุง, กก., ลิตร"
+                className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+              />
+            </div>
+          </div>
+
           <div>
-            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
-              ราคา/หน่วย (฿)
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              ราคาต่อหน่วย (บาท)
             </label>
             <input
               type="number"
               min={0}
               value={unitPrice}
               onChange={(e) => setUnitPrice(Number(e.target.value))}
-              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-400 font-mono"
             />
           </div>
-        </div>
 
-        <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
-          <span className="text-sm text-neutral-400 font-bold">รวม</span>
-          <span className="font-mono font-black text-xl text-rose-300">
-            ฿{previewTotal.toFixed(0)}
+          <div>
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              วันที่ซื้อจริง
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#161b22] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+            />
+          </div>
+
+          <div className="flex items-end">
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-black font-black text-sm transition-all shadow-[0_0_15px_rgba(244,63,94,0.4)]"
+            >
+              + บันทึกรายจ่าย
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="p-6 rounded-3xl bg-[#0D1117] border border-white/10 shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-white">
+            ประวัติค่าใช้จ่ายทั้งหมด
+          </h3>
+          <span className="text-sm font-mono font-black text-rose-400">
+            รวมทั้งสิ้น: ฿{totalExpenseAmount.toLocaleString()}
           </span>
         </div>
 
-        <button
-          onClick={handleSubmit}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-rose-400 to-rose-300 text-black font-black text-sm active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(244,63,94,0.5)]"
-        >
-          <Save size={16} /> บันทึกรายการ
-        </button>
-      </div>
-
-      {/* ประวัติ + สรุปยอดรวม */}
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex flex-wrap gap-3">
-            <div className="px-4 py-2.5 rounded-xl bg-[#0D1117] border border-rose-400/30 flex flex-col">
-              <span className="font-mono font-black text-xl text-rose-300">
-                ฿{totalForPeriod.toFixed(0)}
-              </span>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
-                รวมค่าใช้จ่ายช่วงที่เลือก
-              </span>
-            </div>
-            {(Object.keys(EXPENSE_CATEGORY_META) as ExpenseCategory[]).map(
-              (cat) => {
-                const meta = EXPENSE_CATEGORY_META[cat];
-                if (byCategory[cat] <= 0) return null;
-                return (
-                  <div
-                    key={cat}
-                    className="px-3.5 py-2.5 rounded-xl bg-[#0D1117] border border-white/10 flex flex-col"
-                  >
-                    <span
-                      className={`font-mono font-black text-base ${meta.colorCls}`}
-                    >
-                      ฿{byCategory[cat].toFixed(0)}
-                    </span>
-                    <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
-                      {meta.label}
-                    </span>
-                  </div>
-                );
-              }
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5 bg-white/[0.04] p-1.5 rounded-xl border border-white/10 text-xs">
-            <span className="text-neutral-300 px-2 flex items-center gap-1 font-bold">
-              <Calendar size={14} className="text-rose-400" /> ตัวกรอง:
-            </span>
-            <button
-              onClick={() => setHistoryFilter('today')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                historyFilter === 'today'
-                  ? 'bg-rose-400 text-black shadow-md'
-                  : 'text-neutral-300 hover:text-white'
-              }`}
-            >
-              วันนี้
-            </button>
-            <button
-              onClick={() => setHistoryFilter('yesterday')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                historyFilter === 'yesterday'
-                  ? 'bg-rose-400 text-black shadow-md'
-                  : 'text-neutral-300 hover:text-white'
-              }`}
-            >
-              เมื่อวาน
-            </button>
-            <button
-              onClick={() => setHistoryFilter('custom')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                historyFilter === 'custom'
-                  ? 'bg-rose-400 text-black shadow-md'
-                  : 'text-neutral-300 hover:text-white'
-              }`}
-            >
-              เลือกวันเอง
-            </button>
-            <button
-              onClick={() => setHistoryFilter('monthly')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                historyFilter === 'monthly'
-                  ? 'bg-rose-400 text-black shadow-md'
-                  : 'text-neutral-300 hover:text-white'
-              }`}
-            >
-              รายเดือน
-            </button>
-            <button
-              onClick={() => setHistoryFilter('all')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                historyFilter === 'all'
-                  ? 'bg-rose-400 text-black shadow-md'
-                  : 'text-neutral-300 hover:text-white'
-              }`}
-            >
-              ทั้งหมด
-            </button>
-
-            {historyFilter === 'custom' && (
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="ml-1 bg-white/[0.06] border border-rose-400/40 text-rose-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-rose-400 cursor-pointer"
-              />
-            )}
-            {historyFilter === 'monthly' && (
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="ml-1 bg-white/[0.06] border border-rose-400/40 text-rose-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-rose-400 cursor-pointer"
-              />
-            )}
-          </div>
-        </div>
-
-        {filteredExpenses.length === 0 ? (
-          <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl text-neutral-400 text-sm font-bold">
-            ไม่พบรายการค่าใช้จ่ายในช่วงเวลาที่เลือก
-          </div>
+        {expenses.length === 0 ? (
+          <p className="text-neutral-500 text-sm py-8 text-center">
+            ยังไม่มีประวัติค่าใช้จ่าย
+          </p>
         ) : (
-          <div className="space-y-2">
-            {filteredExpenses.map((e) => {
-              const meta = EXPENSE_CATEGORY_META[e.category];
+          <div className="space-y-3">
+            {expenses.map((ex) => {
+              const meta =
+                EXPENSE_CATEGORY_META[ex.category] ||
+                EXPENSE_CATEGORY_META.other;
               const Icon = meta.icon;
               return (
                 <div
-                  key={e.id}
-                  className="flex items-center justify-between gap-3 rounded-2xl bg-[#0D1117] border border-white/10 px-4 py-3"
+                  key={ex.id}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span
-                      className={`shrink-0 w-9 h-9 rounded-xl border flex items-center justify-center ${meta.chipCls}`}
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`p-2.5 rounded-xl bg-white/5 ${meta.colorCls}`}
                     >
-                      <Icon size={16} />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-extrabold text-white truncate">
-                        {e.description}
+                      <Icon size={20} />
+                    </div>
+                    <div>
+                      <p className="text-base font-extrabold text-white">
+                        {ex.description}
                       </p>
-                      <p className="text-xs text-neutral-400 font-mono">
-                        {e.date} · {e.quantity}
-                        {e.unit ? ` ${e.unit}` : ''} × ฿{e.unitPrice}
-                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold border ${meta.chipCls}`}
+                        >
+                          {meta.label}
+                        </span>
+                        <span className="text-xs text-neutral-400 font-mono">
+                          {ex.quantity} {ex.unit} × ฿{ex.unitPrice}
+                        </span>
+                        <span className="text-xs text-neutral-500 font-mono">
+                          📅 {ex.date}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="font-mono font-black text-base text-rose-300">
-                      ฿{e.total.toFixed(0)}
+
+                  <div className="flex items-center gap-4">
+                    <span className="text-lg font-mono font-black text-rose-400">
+                      ฿{ex.total}
                     </span>
                     <button
-                      onClick={() => deleteExpense(e.id)}
-                      title="ลบรายการนี้"
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-neutral-500 hover:text-rose-300"
+                      onClick={() => deleteExpense(ex.id)}
+                      className="p-2 text-neutral-500 hover:text-rose-400 transition-colors"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={18} />
                     </button>
                   </div>
                 </div>
@@ -3161,260 +3096,6 @@ function ExpenseTracker({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
-  const [searchPhone, setSearchPhone] = useState<string>('');
-  const [member, setMember] = useState<MemberData | null>(null);
-  const [pointsToDeduct, setPointsToDeduct] = useState<number>(10);
-  const [pointsToAdd, setPointsToAdd] = useState<number>(10);
-  const [isSearching, setIsSearching] = useState<boolean>(false);
-
-  async function handleSearch() {
-    const code = searchPhone.trim();
-    if (code.length !== 4) {
-      setToast('กรุณากรอกรหัสสมาชิก 4 ตัวท้ายให้ครบถ้วน');
-      return;
-    }
-    setIsSearching(true);
-    const memberRef = ref(db, `members/${code}`);
-    const snapshot = await get(memberRef);
-    if (snapshot.exists()) {
-      setMember(snapshot.val());
-    } else {
-      setMember({ phone4: code, points: 0, updatedAt: Date.now() });
-      setToast(`ยังไม่มีข้อมูลสมาชิก #${code} (เริ่มต้น 0 คะแนน)`);
-    }
-    setIsSearching(false);
-  }
-
-  async function handleAddPoints() {
-    if (!member) return;
-    if (pointsToAdd <= 0) {
-      setToast('กรุณาระบุจำนวนคะแนนที่ต้องการเพิ่มให้ถูกต้อง');
-      return;
-    }
-
-    const newPoints = member.points + pointsToAdd;
-    const memberRef = ref(db, `members/${member.phone4}`);
-    await set(memberRef, {
-      phone4: member.phone4,
-      points: newPoints,
-      updatedAt: Date.now(),
-    });
-
-    setMember({ ...member, points: newPoints, updatedAt: Date.now() });
-    setToast(
-      `เพิ่มคะแนนให้สมาชิก #${member.phone4} จำนวน +${pointsToAdd} คะแนนเรียบร้อยแล้ว`
-    );
-  }
-
-  async function handleDeductPoints() {
-    if (!member) return;
-    if (pointsToDeduct <= 0) {
-      setToast('กรุณาระบุจำนวนคะแนนที่ต้องการหักให้ถูกต้อง');
-      return;
-    }
-    if (member.points < pointsToDeduct) {
-      setToast(
-        `คะแนนไม่พอ! สมาชิกมีเพียง ${member.points} คะแนน แต่ต้องการตัด ${pointsToDeduct} คะแนน`
-      );
-      return;
-    }
-
-    const newPoints = member.points - pointsToDeduct;
-    const memberRef = ref(db, `members/${member.phone4}`);
-    await set(memberRef, {
-      phone4: member.phone4,
-      points: newPoints,
-      updatedAt: Date.now(),
-    });
-
-    setMember({ ...member, points: newPoints, updatedAt: Date.now() });
-    setToast(
-      `ตัดคะแนนสมาชิก #${member.phone4} จำนวน -${pointsToDeduct} คะแนนเรียบร้อยแล้ว`
-    );
-  }
-
-  return (
-    <div className="mt-6 max-w-xl">
-      <div className="p-6 rounded-3xl bg-[#0D1117] border border-amber-400/30 shadow-xl">
-        <h2 className="text-xl font-black text-amber-400 flex items-center gap-2 mb-1">
-          <Award size={22} /> ระบบจัดการแต้มสะสมสมาชิก (Manage Points)
-        </h2>
-        <p className="text-sm font-semibold text-neutral-300 mb-6">
-          สำหรับบาริสต้าใช้เพิ่มแต้มอิสระ
-          หรือตัดคะแนนสะสมเมื่อลูกค้านำแต้มมาแลกส่วนลด
-        </p>
-
-        <div className="space-y-2 mb-6">
-          <label className="text-sm font-bold text-neutral-200 block">
-            ค้นหารหัสสมาชิก (เบอร์โทร 4 ตัวท้าย)
-          </label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Phone
-                size={18}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
-              />
-              <input
-                type="text"
-                inputMode="numeric"
-                value={searchPhone}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  if (val.length <= 4) setSearchPhone(val);
-                }}
-                maxLength={4}
-                placeholder="เช่น 1234"
-                className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-base font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
-              />
-            </div>
-            <button
-              onClick={handleSearch}
-              disabled={isSearching}
-              className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-black text-sm font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0"
-            >
-              <Search size={16} /> ค้นหา
-            </button>
-          </div>
-        </div>
-
-        {member && (
-          <div className="pt-5 border-t border-white/10 space-y-6 animate-fadeIn">
-            <div className="p-4 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-between">
-              <div>
-                <span className="text-sm text-neutral-300 block font-bold">
-                  สมาชิกหมายเลข
-                </span>
-                <span className="text-xl font-black text-white font-mono">
-                  #{member.phone4}
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="text-sm text-amber-300 block font-bold">
-                  คะแนนสะสมคงเหลือ
-                </span>
-                <span className="text-2xl font-black text-amber-400 font-mono">
-                  {member.points}{' '}
-                  <span className="text-sm font-semibold text-amber-200">
-                    แต้ม
-                  </span>
-                </span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-3">
-              <label className="text-sm font-bold text-emerald-300 flex items-center gap-1.5">
-                <PlusCircle size={16} /> บวกแต้มสะสมเพิ่ม (Add Points)
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  min={1}
-                  value={pointsToAdd}
-                  onChange={(e) =>
-                    setPointsToAdd(Math.max(1, Number(e.target.value)))
-                  }
-                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-lg font-mono font-bold text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                />
-                <span className="text-sm font-bold text-neutral-300">
-                  คะแนน
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                {[10, 20, 50, 100].map((pts) => (
-                  <button
-                    key={pts}
-                    onClick={() => setPointsToAdd(pts)}
-                    className="px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300"
-                  >
-                    +{pts} แต้ม
-                  </button>
-                ))}
-              </div>
-
-              <button
-                onClick={handleAddPoints}
-                className="w-full py-3 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-[0.98]"
-              >
-                <PlusCircle size={18} /> ยืนยันการเพิ่มคะแนน (+{pointsToAdd}{' '}
-                แต้ม)
-              </button>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 space-y-3">
-              <label className="text-sm font-bold text-rose-300 flex items-center gap-1.5">
-                <MinusCircle size={16} /> หัก / แลกคะแนนออก (Redeem Points)
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  min={1}
-                  max={member.points}
-                  value={pointsToDeduct}
-                  onChange={(e) =>
-                    setPointsToDeduct(Math.max(1, Number(e.target.value)))
-                  }
-                  className="w-32 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-lg font-mono font-bold text-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400"
-                />
-                <span className="text-sm font-bold text-neutral-300">
-                  คะแนน
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                {[10, 20, 50, 100].map((pts) => (
-                  <button
-                    key={pts}
-                    onClick={() => setPointsToDeduct(pts)}
-                    className="px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300"
-                  >
-                    -{pts} แต้ม
-                  </button>
-                ))}
-              </div>
-
-              <button
-                onClick={handleDeductPoints}
-                disabled={member.points <= 0}
-                className={`w-full py-3 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-1.5 ${
-                  member.points > 0
-                    ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]'
-                    : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
-                }`}
-              >
-                <MinusCircle size={18} /> ยืนยันการหัก/ตัดคะแนน (-
-                {pointsToDeduct} แต้ม)
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function StatChip({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number | string;
-  color: string;
-}) {
-  return (
-    <div className="px-4 py-2.5 rounded-2xl bg-[#0D1117] border border-white/10 flex flex-col items-center min-w-[90px]">
-      <span className={`font-mono font-extrabold text-2xl ${color}`}>
-        {value}
-      </span>
-      <span className="text-xs text-neutral-300 font-bold uppercase tracking-wider">
-        {label}
-      </span>
     </div>
   );
 }
@@ -3449,705 +3130,290 @@ function OrdersFeed({
   now: number;
   historyFilter: 'today' | 'yesterday' | 'custom' | 'monthly' | 'all';
   setHistoryFilter: (
-    filter: 'today' | 'yesterday' | 'custom' | 'monthly' | 'all'
+    f: 'today' | 'yesterday' | 'custom' | 'monthly' | 'all'
   ) => void;
   selectedDate: string;
-  setSelectedDate: (date: string) => void;
+  setSelectedDate: (d: string) => void;
   selectedMonth: string;
-  setSelectedMonth: (month: string) => void;
+  setSelectedMonth: (m: string) => void;
 }) {
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [showSalesChart, setShowSalesChart] = useState<boolean>(false);
+  const [editingOrderModal, setEditingOrderModal] = useState<Order | null>(
+    null
+  );
 
   const filteredHistory = useMemo(() => {
-    if (historyFilter === 'all') {
-      return allOrders.filter((o) => o.status !== 'pending');
-    }
+    const historyList = allOrders.filter((o) => o.status !== 'pending');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const yesterdayDate = new Date(Date.now() - 86400000)
+      .toISOString()
+      .split('T')[0];
 
-    const nowDate = new Date(now);
-    const startOfToday = new Date(
-      nowDate.getFullYear(),
-      nowDate.getMonth(),
-      nowDate.getDate()
-    ).getTime();
-    const endOfToday = startOfToday + 24 * 60 * 60 * 1000 - 1;
+    return historyList.filter((o) => {
+      const orderDateStr = new Date(o.createdAt).toISOString().split('T')[0];
+      const orderMonthStr = orderDateStr.slice(0, 7);
 
-    let startTime = startOfToday;
-    let endTime = endOfToday;
-
-    if (historyFilter === 'yesterday') {
-      startTime = startOfToday - 24 * 60 * 60 * 1000;
-      endTime = startOfToday - 1;
-    } else if (historyFilter === 'custom') {
-      if (!selectedDate) return [];
-      const [year, month, day] = selectedDate.split('-').map(Number);
-      const customStart = new Date(year, month - 1, day).getTime();
-      startTime = customStart;
-      endTime = customStart + 24 * 60 * 60 * 1000 - 1;
-    } else if (historyFilter === 'monthly') {
-      if (!selectedMonth) return [];
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const monthStart = new Date(year, month - 1, 1).getTime();
-      const monthEnd = new Date(year, month, 0, 23, 59, 59, 999).getTime();
-      startTime = monthStart;
-      endTime = monthEnd;
-    }
-
-    return allOrders.filter((o) => {
-      if (o.status === 'pending') return false;
-      return o.createdAt >= startTime && o.createdAt <= endTime;
+      if (historyFilter === 'today') return orderDateStr === todayStr;
+      if (historyFilter === 'yesterday') return orderDateStr === yesterdayDate;
+      if (historyFilter === 'custom') return orderDateStr === selectedDate;
+      if (historyFilter === 'monthly') return orderMonthStr === selectedMonth;
+      return true;
     });
-  }, [allOrders, now, historyFilter, selectedDate, selectedMonth]);
+  }, [allOrders, historyFilter, selectedDate, selectedMonth]);
 
-  const pendingCount = activeOrders.length;
-  const doneOrders = filteredHistory.filter((o) => o.status === 'done');
-  const doneCount = doneOrders.length;
-  const cancelCount = filteredHistory.filter(
-    (o) => o.status === 'cancelled'
-  ).length;
-
-  const totalCups = useMemo(
-    () =>
-      doneOrders.reduce(
-        (sum, o) =>
-          sum + o.items.reduce((itemSum, item) => itemSum + item.qty, 0),
-        0
-      ),
-    [doneOrders]
-  );
-
-  const totalRevenue = useMemo(
-    () => doneOrders.reduce((sum, o) => sum + o.total, 0),
-    [doneOrders]
-  );
+  const historyRevenue = filteredHistory
+    .filter((o) => o.status === 'done')
+    .reduce((sum, o) => sum + o.total, 0);
 
   return (
-    <div className="mt-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div className="flex flex-wrap gap-3">
-          <StatChip
-            label="Pending / รอดำเนินการ"
-            value={pendingCount}
-            color="text-amber-300"
-          />
-          <StatChip
-            label="Done / เสร็จสิ้น"
-            value={doneCount}
-            color="text-emerald-300"
-          />
-          <StatChip
-            label="Cups / แก้ว"
-            value={`${totalCups} แก้ว`}
-            color="text-cyan-300"
-          />
-          <StatChip
-            label="Cancelled / ยกเลิก"
-            value={cancelCount}
-            color="text-rose-400"
-          />
-          <StatChip
-            label="Revenue / ยอดขาย"
-            value={`฿${totalRevenue}`}
-            color="text-teal-300"
-          />
-        </div>
+    <div className="mt-6 space-y-8">
+      <div>
+        <h2 className="text-xl font-black text-white mb-4 flex items-center gap-2">
+          <Clock className="text-teal-400" size={22} /> ออเดอร์ที่กำลังรอทำ
+          (Live Active Orders) —{' '}
+          <span className="text-teal-300 font-mono">{activeOrders.length}</span>
+        </h2>
 
-        <div className="flex flex-wrap items-center gap-1.5 bg-white/[0.04] p-1.5 rounded-xl border border-white/10 text-xs">
-          <span className="text-neutral-300 px-2 flex items-center gap-1 font-bold">
-            <Calendar size={14} className="text-amber-400" /> ตัวกรองประวัติ:
-          </span>
-          <button
-            onClick={() => setHistoryFilter('today')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-              historyFilter === 'today'
-                ? 'bg-amber-400 text-black shadow-md'
-                : 'text-neutral-300 hover:text-white'
-            }`}
-          >
-            วันนี้
-          </button>
-          <button
-            onClick={() => setHistoryFilter('yesterday')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-              historyFilter === 'yesterday'
-                ? 'bg-amber-400 text-black shadow-md'
-                : 'text-neutral-300 hover:text-white'
-            }`}
-          >
-            เมื่อวาน
-          </button>
-          <button
-            onClick={() => setHistoryFilter('custom')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-              historyFilter === 'custom'
-                ? 'bg-amber-400 text-black shadow-md'
-                : 'text-neutral-300 hover:text-white'
-            }`}
-          >
-            เลือกวันเอง
-          </button>
-          <button
-            onClick={() => setHistoryFilter('monthly')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-              historyFilter === 'monthly'
-                ? 'bg-amber-400 text-black shadow-md'
-                : 'text-neutral-300 hover:text-white'
-            }`}
-          >
-            รายเดือน
-          </button>
-          <button
-            onClick={() => setHistoryFilter('all')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-              historyFilter === 'all'
-                ? 'bg-amber-400 text-black shadow-md'
-                : 'text-neutral-300 hover:text-white'
-            }`}
-          >
-            ทั้งหมด
-          </button>
+        {activeOrders.length === 0 ? (
+          <div className="p-10 text-center rounded-3xl bg-[#0D1117] border border-white/10 text-neutral-500 font-bold">
+            ไม่มีออเดอร์ค้างในขณะนี้ (All orders completed!)
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {activeOrders.map((o) => (
+              <div
+                key={o.id}
+                className="p-5 rounded-3xl bg-[#0D1117] border-2 border-amber-400/40 shadow-[0_0_30px_rgba(245,158,11,0.15)] flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 font-mono font-bold text-xs">
+                      {o.customerName}
+                    </span>
+                    <span className="text-xs text-neutral-400 font-mono">
+                      {timeAgo(o.createdAt, now)}
+                    </span>
+                  </div>
 
-          {historyFilter === 'custom' && (
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="ml-1 bg-white/[0.06] border border-amber-400/40 text-amber-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
-            />
-          )}
+                  {o.customerNote && (
+                    <div className="mb-3 p-2.5 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-200 text-xs font-bold flex items-center gap-1.5">
+                      <span className="font-black text-amber-400">
+                        💬 โน้ต:
+                      </span>{' '}
+                      {o.customerNote}
+                    </div>
+                  )}
 
-          {historyFilter === 'monthly' && (
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="ml-1 bg-white/[0.06] border border-amber-400/40 text-amber-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
-            />
-          )}
+                  <div className="space-y-2 mb-4">
+                    {o.items.map((i, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5"
+                      >
+                        <div className="flex justify-between items-start">
+                          <span className="text-base font-black text-white">
+                            {i.qty}× {i.nameTh}
+                          </span>
+                          <span className="text-sm font-mono font-bold text-amber-400">
+                            {i.redeemedWithPoints
+                              ? '🎁 ใช้แต้ม'
+                              : `฿${i.total}`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-neutral-400">
+                          <span>{i.name}</span>
+                          <span>•</span>
+                          <span
+                            className={`font-bold ${sweetnessColor(
+                              i.sweetness
+                            )}`}
+                          >
+                            หวาน {i.sweetness}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-          <button
-            onClick={() => setShowSalesChart(true)}
-            title="ดูกราฟยอดขายรายเดือน (Monthly Sales Chart)"
-            className="ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold bg-teal-500/20 border border-teal-400/40 text-teal-300 hover:bg-teal-500/30 transition-colors"
-          >
-            <BarChart3 size={14} /> กราฟยอดขาย
-          </button>
-        </div>
+                <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                  <span className="text-lg font-mono font-black text-amber-400">
+                    ฿{o.total}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditingOrderModal(o)}
+                      className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-300 text-xs font-bold transition-colors flex items-center gap-1"
+                    >
+                      <Pencil size={14} /> แก้ไข
+                    </button>
+                    <button
+                      onClick={() => advanceOrder(o.id, 'cancelled')}
+                      className="px-3 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold transition-colors"
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      onClick={() => advanceOrder(o.id, 'done')}
+                      className="px-4 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-black text-xs font-black transition-colors shadow-[0_0_15px_rgba(16,185,129,0.4)]"
+                    >
+                      ทำเสร็จแล้ว ✓
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <h2 className="text-base font-extrabold text-amber-300 uppercase tracking-wider mb-3 flex items-center gap-2">
-        <Clock size={18} /> ออเดอร์ที่กำลังรอทำ (Active Pending Orders)
-      </h2>
+      <div className="pt-6 border-t border-white/10">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <h2 className="text-xl font-black text-white flex items-center gap-2">
+            <History className="text-teal-400" size={22} /> ประวัติออเดอร์
+            (History & Reports)
+          </h2>
 
-      {activeOrders.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl text-neutral-400 text-base font-bold mb-8">
-          ไม่มีออเดอร์ค้างอยู่ในขณะนี้
-        </div>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {activeOrders.map((o) => (
-            <OrderCard
-              key={o.id}
-              order={o}
-              advanceOrder={advanceOrder}
-              onEdit={() => setEditingOrder(o)}
-              now={now}
-            />
-          ))}
-        </div>
-      )}
+          <div className="flex flex-wrap items-center gap-2">
+            {(['today', 'yesterday', 'custom', 'monthly', 'all'] as const).map(
+              (f) => (
+                <button
+                  key={f}
+                  onClick={() => setHistoryFilter(f)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                    historyFilter === f
+                      ? 'bg-teal-400 border-teal-400 text-black font-black'
+                      : 'bg-white/[0.03] border-white/10 text-neutral-300 hover:text-white'
+                  }`}
+                >
+                  {f === 'today'
+                    ? 'วันนี้'
+                    : f === 'yesterday'
+                    ? 'เมื่อวาน'
+                    : f === 'custom'
+                    ? 'เลือกวัน'
+                    : f === 'monthly'
+                    ? 'รายเดือน'
+                    : 'ทั้งหมด'}
+                </button>
+              )
+            )}
 
-      <h2 className="text-base font-extrabold text-neutral-300 uppercase tracking-wider mb-3 flex items-center gap-2 pt-4 border-t border-white/10">
-        <Calendar size={18} /> ประวัติออเดอร์ย้อนหลัง (Order History Log)
-      </h2>
+            {historyFilter === 'custom' && (
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="px-3 py-1.5 rounded-xl bg-[#0D1117] border border-white/10 text-xs text-white font-mono"
+              />
+            )}
 
-      {filteredHistory.length === 0 ? (
-        <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-neutral-400 text-sm font-bold">
-          ไม่พบประวัติออเดอร์ในช่วงเวลาที่เลือก
+            {historyFilter === 'monthly' && (
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="px-3 py-1.5 rounded-xl bg-[#0D1117] border border-white/10 text-xs text-white font-mono"
+              />
+            )}
+          </div>
         </div>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredHistory.map((o) => (
-            <OrderCard
-              key={o.id}
-              order={o}
-              advanceOrder={advanceOrder}
-              onEdit={() => setEditingOrder(o)}
-              now={now}
-              isHistory
-            />
-          ))}
-        </div>
-      )}
 
-      {editingOrder && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div className="p-4 rounded-2xl bg-[#0D1117] border border-white/10 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-neutral-400 font-bold">
+                ยอดขายรวมช่วงเวลานี้
+              </p>
+              <p className="text-2xl font-mono font-black text-emerald-400 mt-1">
+                ฿{historyRevenue.toLocaleString()}
+              </p>
+            </div>
+            <BarChart3 size={32} className="text-emerald-400 opacity-80" />
+          </div>
+
+          <div className="p-4 rounded-2xl bg-[#0D1117] border border-white/10 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-neutral-400 font-bold">
+                จำนวนออเดอร์ทั้งหมด
+              </p>
+              <p className="text-2xl font-mono font-black text-teal-400 mt-1">
+                {filteredHistory.length} ออเดอร์
+              </p>
+            </div>
+            <Receipt size={32} className="text-teal-400 opacity-80" />
+          </div>
+        </div>
+
+        {filteredHistory.length === 0 ? (
+          <p className="text-neutral-500 text-sm py-8 text-center bg-[#0D1117] rounded-3xl border border-white/10">
+            ไม่มีประวัติออเดอร์ในช่วงเวลานี้
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {filteredHistory.map((o) => (
+              <div
+                key={o.id}
+                className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-[#0D1117] border border-white/10"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-amber-400 px-2 py-0.5 rounded bg-amber-400/10">
+                      {o.customerName}
+                    </span>
+                    <span className="text-xs text-neutral-400 font-mono">
+                      {fmtDate(o.createdAt)}
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold ${
+                        o.status === 'done'
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : 'bg-rose-500/20 text-rose-300'
+                      }`}
+                    >
+                      {o.status === 'done' ? 'สำเร็จ' : 'ยกเลิก'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {o.items.map((i, idx) => (
+                      <span key={idx} className="text-sm font-bold text-white">
+                        {i.qty}× {i.nameTh} (หวาน {i.sweetness}%)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                  <span className="text-lg font-mono font-black text-amber-400">
+                    ฿{o.total}
+                  </span>
+                  <button
+                    onClick={() => setEditingOrderModal(o)}
+                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-300 text-xs font-bold transition-colors flex items-center gap-1"
+                  >
+                    <Pencil size={14} /> แก้ไขย้อนหลัง
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {editingOrderModal && (
         <OrderEditModal
-          order={editingOrder}
+          order={editingOrderModal}
           menu={menu}
-          onClose={() => setEditingOrder(null)}
-          onSave={(updates) => {
-            editOrder(editingOrder.id, updates);
-            setEditingOrder(null);
+          onClose={() => setEditingOrderModal(null)}
+          onSave={async (updates) => {
+            await editOrder(editingOrderModal.id, updates);
+            setEditingOrderModal(null);
           }}
         />
       )}
-
-      {showSalesChart && (
-        <SalesChartModal
-          orders={allOrders}
-          now={now}
-          onClose={() => setShowSalesChart(false)}
-        />
-      )}
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  SALES CHART MODAL — กราฟยอดขายเพื่อเช็คช่วงพีค/ต่ำสุด               */
-/* ------------------------------------------------------------------ */
-
-const THAI_MONTHS_SHORT = [
-  'ม.ค.',
-  'ก.พ.',
-  'มี.ค.',
-  'เม.ย.',
-  'พ.ค.',
-  'มิ.ย.',
-  'ก.ค.',
-  'ส.ค.',
-  'ก.ย.',
-  'ต.ค.',
-  'พ.ย.',
-  'ธ.ค.',
-];
-
-function formatMonthLabel(ym: string): string {
-  const [y, m] = ym.split('-').map(Number);
-  return `${THAI_MONTHS_SHORT[m - 1]} ${y}`;
-}
-
-function formatBaht(n: number): string {
-  if (n >= 1000) return `฿${(n / 1000).toFixed(1)}k`;
-  return `฿${n.toFixed(0)}`;
-}
-
-function SalesChartModal({
-  orders,
-  now,
-  onClose,
-}: {
-  orders: Order[];
-  now: number;
-  onClose: () => void;
-}) {
-  const [mode, setMode] = useState<'monthly' | 'daily'>('monthly');
-  const [selectedMonth, setSelectedMonth] = useState<string>(
-    new Date(now).toISOString().slice(0, 7)
-  );
-
-  const doneOrders = useMemo(
-    () => orders.filter((o) => o.status === 'done'),
-    [orders]
-  );
-
-  const monthlyData = useMemo(() => {
-    const map: Record<string, number> = {};
-    doneOrders.forEach((o) => {
-      const key = new Date(o.createdAt).toISOString().slice(0, 7);
-      map[key] = (map[key] || 0) + o.total;
-    });
-    return Object.keys(map)
-      .sort((a, b) => a.localeCompare(b))
-      .map((key) => ({ key, label: formatMonthLabel(key), total: map[key] }));
-  }, [doneOrders]);
-
-  const dailyData = useMemo(() => {
-    const map: Record<string, number> = {};
-    doneOrders.forEach((o) => {
-      const key = new Date(o.createdAt).toISOString().slice(0, 10);
-      if (key.startsWith(selectedMonth)) {
-        map[key] = (map[key] || 0) + o.total;
-      }
-    });
-    const [y, m] = selectedMonth.split('-').map(Number);
-    const daysInMonth = new Date(y, m, 0).getDate();
-    const result: { key: string; label: string; total: number }[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const key = `${selectedMonth}-${String(d).padStart(2, '0')}`;
-      result.push({ key, label: String(d), total: map[key] || 0 });
-    }
-    return result;
-  }, [doneOrders, selectedMonth]);
-
-  const chartData = mode === 'monthly' ? monthlyData : dailyData;
-  const maxVal = Math.max(0, ...chartData.map((d) => d.total));
-  const nonZero = chartData.filter((d) => d.total > 0);
-  const peakEntry =
-    maxVal > 0 ? chartData.find((d) => d.total === maxVal) : undefined;
-  const lowEntry = nonZero.length
-    ? nonZero.reduce((a, b) => (a.total <= b.total ? a : b))
-    : undefined;
-  const periodTotal = chartData.reduce((s, d) => s + d.total, 0);
-
-  return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative w-full sm:max-w-3xl bg-[#0B0F14] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto shadow-[0_0_60px_-10px_rgba(0,0,0,0.85)]">
-        <div className="flex items-start justify-between mb-4">
-          <h3 className="text-lg font-black text-white flex items-center gap-2">
-            <BarChart3 size={18} className="text-teal-400" /> กราฟยอดขาย (Sales
-            Chart)
-          </h3>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-          <div className="flex items-center gap-1.5 p-1.5 rounded-xl bg-white/[0.04] border border-white/10">
-            <button
-              onClick={() => setMode('monthly')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                mode === 'monthly'
-                  ? 'bg-teal-400 text-black'
-                  : 'text-neutral-300 hover:text-white'
-              }`}
-            >
-              รายเดือน (ทั้งหมด)
-            </button>
-            <button
-              onClick={() => setMode('daily')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                mode === 'daily'
-                  ? 'bg-teal-400 text-black'
-                  : 'text-neutral-300 hover:text-white'
-              }`}
-            >
-              รายวัน (เลือกเดือน)
-            </button>
-          </div>
-
-          {mode === 'daily' && (
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-white/[0.06] border border-teal-400/40 text-teal-300 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-teal-400 cursor-pointer"
-            />
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-3 mb-5">
-          <div className="px-4 py-2.5 rounded-xl bg-[#0D1117] border border-white/10 flex flex-col">
-            <span className="font-mono font-black text-lg text-teal-300">
-              {formatBaht(periodTotal)}
-            </span>
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
-              ยอดขายรวมในช่วงนี้
-            </span>
-          </div>
-          {peakEntry && (
-            <div className="px-4 py-2.5 rounded-xl bg-[#0D1117] border border-emerald-400/30 flex flex-col">
-              <span className="font-mono font-black text-lg text-emerald-300">
-                {formatBaht(peakEntry.total)}
-              </span>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
-                พีคสุด · {peakEntry.label}
-              </span>
-            </div>
-          )}
-          {lowEntry && (
-            <div className="px-4 py-2.5 rounded-xl bg-[#0D1117] border border-rose-400/30 flex flex-col">
-              <span className="font-mono font-black text-lg text-rose-300">
-                {formatBaht(lowEntry.total)}
-              </span>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
-                ต่ำสุด · {lowEntry.label}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {chartData.length === 0 || maxVal === 0 ? (
-          <div className="text-center py-16 border border-dashed border-white/10 rounded-2xl text-neutral-400 text-sm font-bold">
-            ยังไม่มีข้อมูลยอดขายที่เสร็จสิ้นในช่วงนี้
-          </div>
-        ) : (
-          <div className="rounded-2xl bg-[#0D1117] border border-white/10 p-4 overflow-x-auto">
-            <div className="flex items-end gap-1.5 h-56 min-w-fit">
-              {chartData.map((d) => {
-                const heightPct = maxVal > 0 ? (d.total / maxVal) * 100 : 0;
-                const isPeak = peakEntry && d.key === peakEntry.key;
-                const isLow = lowEntry && d.key === lowEntry.key && d.total > 0;
-                return (
-                  <div
-                    key={d.key}
-                    title={`${d.label}: ฿${d.total.toLocaleString()}`}
-                    className="flex flex-col items-center justify-end shrink-0 h-full"
-                    style={{ width: mode === 'monthly' ? '68px' : '26px' }}
-                  >
-                    {d.total > 0 && heightPct > 18 && (
-                      <span className="text-[9px] font-mono font-bold text-neutral-300 mb-1 whitespace-nowrap">
-                        {formatBaht(d.total)}
-                      </span>
-                    )}
-                    <div
-                      className={`w-full rounded-t-md transition-all ${
-                        isPeak
-                          ? 'bg-emerald-400'
-                          : isLow
-                          ? 'bg-rose-400'
-                          : 'bg-teal-400/60'
-                      }`}
-                      style={{
-                        height: `${d.total > 0 ? Math.max(heightPct, 4) : 1}%`,
-                      }}
-                    />
-                    <span className="text-[9px] text-neutral-500 mt-1.5 font-mono whitespace-nowrap">
-                      {d.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <p className="mt-3 text-xs text-neutral-500">
-          * นับเฉพาะออเดอร์ที่สถานะ "เสร็จสิ้น (Done)" เท่านั้น — แท่งสีเขียว =
-          ช่วงที่ยอดขายสูงสุด, แท่งสีแดง = ช่วงที่ยอดขายต่ำสุด
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function OrderCard({
-  order,
-  advanceOrder,
-  onEdit,
-  now,
-  isHistory = false,
-}: {
-  order: Order;
-  advanceOrder: (id: string, status: OrderStatus) => void;
-  onEdit: () => void;
-  now: number;
-  isHistory?: boolean;
-}) {
-  const statusMeta = {
-    pending: {
-      label: 'PENDING',
-      cls: 'bg-amber-500/15 text-amber-300 border-amber-400/30',
-    },
-    cancelled: {
-      label: 'CANCELLED',
-      cls: 'bg-rose-500/15 text-rose-300 border-rose-400/30',
-    },
-    done: {
-      label: 'DONE',
-      cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30',
-    },
-  }[order.status];
-
-  const [cashReceived, setCashReceived] = useState<string>('');
-  const cashNum = parseFloat(cashReceived) || 0;
-  const change = cashNum - order.total;
-
-  function addCash(amount: number) {
-    setCashReceived((prev) => String((parseFloat(prev) || 0) + amount));
-  }
-
-  function clearCash() {
-    setCashReceived('');
-  }
-
-  return (
-    <div
-      className={`relative rounded-2xl border ${
-        order.status === 'pending'
-          ? 'border-amber-400/40 bg-[#0D1117]'
-          : 'border-white/10 bg-[#090D12] opacity-80'
-      } p-4 overflow-hidden shadow-lg`}
-    >
-      <div className="relative flex items-start justify-between border-b border-white/5 pb-2.5">
-        <div>
-          <span className="font-mono text-xs text-neutral-400 font-bold">
-            #{order.id.slice(-5)}
-          </span>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <User size={16} className="text-amber-400" />
-            <span className="font-extrabold text-base text-white truncate max-w-[140px]">
-              {order.customerName}
-            </span>
-          </div>
-          {order.memberPhoneCode && (
-            <span className="inline-block mt-1 text-xs font-mono font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
-              สมาชิก #{order.memberPhoneCode} (+
-              {order.earnedPoints || order.total / 10} แต้ม)
-            </span>
-          )}
-          {(order.redeemedPoints || 0) > 0 && (
-            <span className="inline-flex items-center gap-1 mt-1 text-xs font-black text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-400/30">
-              🎁 ใช้แต้มแลก {order.redeemedPoints} แต้ม · เมนูที่แลก ฿0
-            </span>
-          )}
-        </div>
-        <div className="flex flex-col items-end gap-1.5">
-          <span
-            className={`text-xs font-black px-2.5 py-1 rounded-full border ${statusMeta.cls}`}
-          >
-            {statusMeta.label}
-          </span>
-          <button
-            onClick={onEdit}
-            title="แก้ไขออเดอร์นี้ (Edit order)"
-            className="flex items-center gap-1 text-[11px] font-bold text-neutral-400 hover:text-teal-300 px-2 py-1 rounded-lg hover:bg-teal-400/10 border border-transparent hover:border-teal-400/30 transition-colors"
-          >
-            <Pencil size={12} /> แก้ไข
-          </button>
-        </div>
-      </div>
-
-      {order.customerNote && (
-        <div className="relative mt-3 p-3 rounded-xl bg-sky-500/10 border border-sky-400/30">
-          <p className="text-[11px] font-black text-sky-300 mb-1">💬 ข้อความถึงบาริสต้า</p>
-          <p className="text-sm font-semibold text-white break-words">{order.customerNote}</p>
-        </div>
-      )}
-
-      <div className="relative mt-3 space-y-2">
-        {order.items.map((item, idx) => (
-          <div key={idx} className="flex justify-between items-start text-xs">
-            <div>
-              <p className="font-black text-base text-white">
-                {item.qty > 1 ? `${item.qty}× ` : ''}
-                {item.nameTh}
-              </p>
-              <p className="text-xs text-neutral-300 font-medium">
-                {item.name} · หวาน{' '}
-                <span className={`font-bold ${sweetnessColor(item.sweetness)}`}>
-                  {item.sweetness}%
-                </span>
-              </p>
-              {item.redeemedWithPoints && (
-                <span className="inline-block mt-1 text-[11px] font-black text-emerald-300 bg-emerald-500/10 border border-emerald-400/30 px-2 py-0.5 rounded">
-                  🎁 ใช้แต้มแลกเมนูนี้ · ราคา ฿0
-                </span>
-              )}
-            </div>
-            <span className={`font-mono font-extrabold text-sm ${item.redeemedWithPoints ? 'text-emerald-300' : 'text-neutral-200'}`}>
-              ฿{item.total}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div className="relative mt-4 pt-2 border-t border-white/5 flex items-center justify-between text-xs">
-        <span className="font-mono font-black text-amber-400 text-base">
-          รวม ฿{order.total}
-        </span>
-        <span className="flex items-center gap-1 text-xs text-neutral-400 font-medium">
-          <Clock size={12} />{' '}
-          {isHistory ? fmtDate(order.createdAt) : timeAgo(order.createdAt, now)}
-        </span>
-      </div>
-
-      {!isHistory && order.status === 'pending' && (
-        <div className="relative mt-4 pt-3 border-t border-white/5">
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-bold text-neutral-400 flex items-center gap-1.5">
-              <Wallet size={13} className="text-teal-400" />{' '}
-              เงินสดที่ลูกค้าให้มา
-            </label>
-            {cashReceived !== '' && (
-              <button
-                onClick={clearCash}
-                className="text-[10px] font-bold text-neutral-500 hover:text-rose-300 flex items-center gap-0.5"
-              >
-                <X size={11} /> ล้าง
-              </button>
-            )}
-          </div>
-
-          <input
-            type="number"
-            min={0}
-            value={cashReceived}
-            onChange={(e) => setCashReceived(e.target.value)}
-            placeholder="0"
-            className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-lg font-mono font-black text-white placeholder:text-neutral-600 mb-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
-          />
-
-          <div className="flex flex-wrap gap-1.5 mb-2.5">
-            {[20, 50, 100, 500, 1000].map((bill) => (
-              <button
-                key={bill}
-                onClick={() => addCash(bill)}
-                className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-xs font-bold text-neutral-300 hover:border-teal-400/50 hover:text-teal-300 transition-colors"
-              >
-                +{bill}
-              </button>
-            ))}
-          </div>
-
-          {cashReceived !== '' && (
-            <div
-              className={`rounded-xl px-3.5 py-2.5 flex items-center justify-between border ${
-                change >= 0
-                  ? 'bg-emerald-500/15 border-emerald-400/40'
-                  : 'bg-rose-500/15 border-rose-400/40'
-              }`}
-            >
-              <span
-                className={`text-xs font-bold ${
-                  change >= 0 ? 'text-emerald-300' : 'text-rose-300'
-                }`}
-              >
-                {change >= 0 ? 'เงินทอน (Change)' : 'ยังขาดอีก (Short by)'}
-              </span>
-              <span
-                className={`font-mono font-black text-xl ${
-                  change >= 0 ? 'text-emerald-300' : 'text-rose-300'
-                }`}
-              >
-                ฿{Math.abs(change).toFixed(0)}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {!isHistory && order.status === 'pending' && (
-        <div className="relative mt-4 flex gap-2">
-          <button
-            onClick={() => advanceOrder(order.id, 'cancelled')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-rose-500/15 border border-rose-400/40 text-rose-300 text-xs font-extrabold hover:bg-rose-500/25 transition-colors"
-          >
-            <XCircle size={15} /> Cancel / ยกเลิก
-          </button>
-          <button
-            onClick={() => advanceOrder(order.id, 'done')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 text-xs font-extrabold hover:bg-emerald-500/25 transition-colors"
-          >
-            <CheckCircle2 size={15} /> Done & เพิ่มแต้ม
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  ORDER EDIT MODAL — แก้ไขออเดอร์ย้อนหลัง (แม้กด Done ไปแล้ว)         */
-/* ------------------------------------------------------------------ */
 
 function OrderEditModal({
   order,
@@ -4163,52 +3429,38 @@ function OrderEditModal({
     memberPhoneCode: string;
     items: CartItem[];
     status: OrderStatus;
-  }) => void;
+  }) => Promise<void>;
 }) {
-  const [customerName, setCustomerName] = useState<string>(order.customerName);
-  const [memberPhoneCode, setMemberPhoneCode] = useState<string>(
+  const [customerName, setCustomerName] = useState(order.customerName);
+  const [memberPhoneCode, setMemberPhoneCode] = useState(
     order.memberPhoneCode || ''
   );
   const [status, setStatus] = useState<OrderStatus>(order.status);
-  const [items, setItems] = useState<CartItem[]>(
-    order.items.map((i) => ({ ...i }))
-  );
-  const [addItemId, setAddItemId] = useState<string>('');
+  const [items, setItems] = useState<CartItem[]>(order.items);
 
-  const grandTotal = items.reduce((sum, i) => sum + i.total, 0);
-
-  function updateQty(idx: number, delta: number) {
+  function updateItemQty(index: number, delta: number) {
     setItems(
       (prev) =>
         prev
-          .map((it, i) => {
-            if (i !== idx) return it;
-            const newQty = it.qty + delta;
-            if (newQty <= 0) return null;
-            return { ...it, qty: newQty, total: it.unitPrice * newQty };
+          .map((item, idx) => {
+            if (idx === index) {
+              const newQty = item.qty + delta;
+              if (newQty <= 0) return null;
+              return {
+                ...item,
+                qty: newQty,
+                total: item.unitPrice * newQty,
+              };
+            }
+            return item;
           })
           .filter(Boolean) as CartItem[]
     );
   }
 
-  function updateUnitPrice(idx: number, value: number) {
-    const price = Math.max(0, value || 0);
-    setItems((prev) =>
-      prev.map((it, i) =>
-        i === idx ? { ...it, unitPrice: price, total: price * it.qty } : it
-      )
-    );
-  }
-
-  function removeItem(idx: number) {
-    setItems((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  function handleAddItem() {
-    const menuItem = menu.find((m) => m.id === addItemId);
-    if (!menuItem) return;
+  function addItemToOrder(menuItem: MenuItem) {
     const newItem: CartItem = {
-      cartId: `${menuItem.id}-${Date.now()}-${Math.random()
+      cartId: `edit-${Date.now()}-${Math.random()
         .toString(36)
         .substring(2, 6)}`,
       itemId: menuItem.id,
@@ -4221,28 +3473,18 @@ function OrderEditModal({
       total: menuItem.price,
     };
     setItems((prev) => [...prev, newItem]);
-    setAddItemId('');
-  }
-
-  function handleSave() {
-    if (items.length === 0) {
-      alert('ออเดอร์ต้องมีอย่างน้อย 1 รายการ กรุณาเพิ่มรายการก่อนบันทึก');
-      return;
-    }
-    onSave({ customerName, memberPhoneCode, items, status });
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative w-full sm:max-w-lg bg-[#0B0F14] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto shadow-[0_0_60px_-10px_rgba(0,0,0,0.85)]">
-        <div className="flex items-start justify-between mb-4">
-          <h3 className="text-lg font-black text-white flex items-center gap-2">
-            <Pencil size={18} className="text-teal-400" /> แก้ไขออเดอร์ #
-            {order.id.slice(-5)}
+      <div className="relative w-full max-w-lg bg-[#0D1117] border border-white/10 rounded-3xl p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
+          <h3 className="text-xl font-black text-white">
+            แก้ไขออเดอร์ย้อนหลัง
           </h3>
           <button
             onClick={onClose}
@@ -4252,360 +3494,375 @@ function OrderEditModal({
           </button>
         </div>
 
-        {(order.status === 'done' || order.status === 'cancelled') && (
-          <p className="mb-4 text-xs font-bold text-amber-300 bg-amber-400/10 border border-amber-400/25 rounded-xl px-3 py-2">
-            ⚠️ ออเดอร์นี้{' '}
-            {order.status === 'done' ? 'ทำเสร็จแล้ว' : 'ถูกยกเลิกแล้ว'} —
-            การแก้ไขจะคำนวณแต้มสะสมของสมาชิกใหม่ให้อัตโนมัติ (หักแต้มเดิม
-            แล้วเติมแต้มใหม่ตามยอดที่แก้ไข)
-          </p>
-        )}
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
               ชื่อลูกค้า
             </label>
-            <div className="relative">
-              <User
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
-              />
-              <input
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full pl-8 pr-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-neutral-400 mb-1.5">
-              เบอร์สมาชิก (4 หลัก)
-            </label>
             <input
-              value={memberPhoneCode}
-              onChange={(e) =>
-                setMemberPhoneCode(
-                  e.target.value.replace(/\D/g, '').slice(0, 4)
-                )
-              }
-              placeholder="เว้นว่างถ้าไม่ใช่สมาชิก"
-              className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-amber-300 placeholder:text-neutral-600 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-teal-400"
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
             />
           </div>
-        </div>
 
-        <div className="mb-4">
-          <label className="block text-xs font-bold text-neutral-400 mb-1.5">
-            สถานะออเดอร์
-          </label>
-          <div className="flex gap-2">
-            {(
-              [
-                { key: 'pending', label: 'รอดำเนินการ', cls: 'amber' },
-                { key: 'done', label: 'เสร็จสิ้น', cls: 'emerald' },
-                { key: 'cancelled', label: 'ยกเลิก', cls: 'rose' },
-              ] as { key: OrderStatus; label: string; cls: string }[]
-            ).map((s) => (
-              <button
-                key={s.key}
-                onClick={() => setStatus(s.key)}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-extrabold border transition-colors ${
-                  status === s.key
-                    ? s.cls === 'amber'
-                      ? 'bg-amber-500/20 border-amber-400/60 text-amber-300'
-                      : s.cls === 'emerald'
-                      ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300'
-                      : 'bg-rose-500/20 border-rose-400/60 text-rose-300'
-                    : 'bg-white/[0.03] border-white/10 text-neutral-400 hover:border-white/25'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
+          <div>
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              เบอร์สมาชิก 4 ตัวท้าย (ถ้ามี)
+            </label>
+            <input
+              type="text"
+              maxLength={4}
+              value={memberPhoneCode}
+              onChange={(e) =>
+                setMemberPhoneCode(e.target.value.replace(/\D/g, ''))
+              }
+              placeholder="เช่น 1234"
+              className="w-full px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-amber-300 focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              สถานะออเดอร์
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as OrderStatus)}
+              className="w-full px-3.5 py-2 rounded-xl bg-[#161b22] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+            >
+              <option value="pending">รอดำเนินการ (Pending)</option>
+              <option value="done">เสร็จสิ้น (Done)</option>
+              <option value="cancelled">ยกเลิก (Cancelled)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-neutral-300 mb-2">
+              รายการสินค้าในออเดอร์
+            </label>
+            <div className="space-y-2 mb-3">
+              {items.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5"
+                >
+                  <div>
+                    <p className="text-sm font-bold text-white">
+                      {item.nameTh}
+                    </p>
+                    <p className="text-xs text-neutral-400">
+                      ฿{item.unitPrice} · หวาน {item.sweetness}%
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1 bg-white/5 rounded-lg px-2 py-1">
+                      <button
+                        onClick={() => updateItemQty(idx, -1)}
+                        className="text-neutral-300 hover:text-white"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="text-sm font-mono font-bold w-4 text-center">
+                        {item.qty}
+                      </span>
+                      <button
+                        onClick={() => updateItemQty(idx, 1)}
+                        className="text-neutral-300 hover:text-white"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                    <span className="font-mono font-bold text-amber-400 min-w-[45px] text-right">
+                      ฿{item.total}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+              <p className="text-xs font-bold text-neutral-400 mb-2">
+                เพิ่มเมนูสินค้าในออเดอร์นี้:
+              </p>
+              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                {menu
+                  .filter((m) => m.available)
+                  .map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => addItemToOrder(m)}
+                      className="px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-bold transition-colors"
+                    >
+                      + {m.nameTh} (฿{m.price})
+                    </button>
+                  ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-white/10 flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-neutral-300 font-bold text-sm"
+            >
+              ยกเลิก
+            </button>
+            <button
+              onClick={() =>
+                onSave({ customerName, memberPhoneCode, items, status })
+              }
+              className="flex-1 py-3 rounded-2xl bg-teal-400 hover:bg-teal-300 text-black font-black text-sm shadow-[0_0_20px_rgba(20,184,166,0.4)]"
+            >
+              บันทึกการแก้ไข
+            </button>
           </div>
         </div>
-
-        <div className="mb-3 flex items-center justify-between">
-          <label className="block text-xs font-bold text-neutral-400">
-            รายการเครื่องดื่ม
-          </label>
-          <span className="text-xs font-mono text-neutral-500">
-            {items.length} รายการ
-          </span>
-        </div>
-
-        <div className="space-y-2 mb-3">
-          {items.map((item, idx) => (
-            <div
-              key={item.cartId}
-              className="rounded-xl bg-white/[0.03] border border-white/10 p-3"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-extrabold text-white truncate">
-                    {item.nameTh}
-                  </p>
-                  <p className="text-xs text-neutral-400 truncate">
-                    {item.name} · หวาน {item.sweetness}%
-                  </p>
-                </div>
-                <button
-                  onClick={() => removeItem(idx)}
-                  title="ลบรายการนี้"
-                  className="shrink-0 p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 mt-2.5">
-                <div className="flex items-center gap-2 bg-white/[0.04] border border-white/10 rounded-lg px-2 py-1">
-                  <button
-                    onClick={() => updateQty(idx, -1)}
-                    className="p-1 text-neutral-300 hover:text-white"
-                  >
-                    <Minus size={13} />
-                  </button>
-                  <span className="w-5 text-center font-mono text-sm text-white">
-                    {item.qty}
-                  </span>
-                  <button
-                    onClick={() => updateQty(idx, 1)}
-                    className="p-1 text-neutral-300 hover:text-white"
-                  >
-                    <Plus size={13} />
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <Tag size={13} className="text-neutral-500" />
-                  <input
-                    type="number"
-                    min={0}
-                    value={item.unitPrice}
-                    onChange={(e) =>
-                      updateUnitPrice(idx, Number(e.target.value))
-                    }
-                    className="w-16 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-teal-400"
-                  />
-                  <span className="text-xs text-neutral-500">/แก้ว</span>
-                </div>
-
-                <span className="font-mono font-extrabold text-amber-300 text-sm">
-                  ฿{item.total}
-                </span>
-              </div>
-            </div>
-          ))}
-
-          {items.length === 0 && (
-            <div className="text-center py-6 text-xs font-bold text-rose-300 border border-dashed border-rose-500/30 rounded-xl">
-              ไม่มีรายการ — กรุณาเพิ่มเมนูอย่างน้อย 1 รายการ
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-2 mb-5">
-          <select
-            value={addItemId}
-            onChange={(e) => setAddItemId(e.target.value)}
-            className="flex-1 px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-          >
-            <option value="">+ เพิ่มเมนูที่ถูกต้อง...</option>
-            {menu.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nameTh} ({m.name}) · ฿{m.price}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={handleAddItem}
-            disabled={!addItemId}
-            className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 shrink-0 ${
-              addItemId
-                ? 'bg-teal-500/20 border border-teal-400/50 text-teal-300 hover:bg-teal-500/30'
-                : 'bg-white/[0.03] border border-white/10 text-neutral-600 cursor-not-allowed'
-            }`}
-          >
-            <Plus size={15} /> เพิ่ม
-          </button>
-        </div>
-
-        <div className="flex items-center justify-between mb-5 pt-3 border-t border-white/10">
-          <span className="text-sm text-neutral-400 font-bold">ยอดรวมใหม่</span>
-          <span className="font-mono font-black text-2xl text-amber-400">
-            ฿{grandTotal}
-          </span>
-        </div>
-
-        <button
-          onClick={handleSave}
-          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-gradient-to-r from-teal-400 to-teal-300 text-black font-black text-sm active:scale-[0.98] transition-transform shadow-[0_0_25px_-5px_rgba(45,212,191,0.6)]"
-        >
-          <Save size={17} /> บันทึกการแก้ไข (Save Changes)
-        </button>
       </div>
     </div>
   );
 }
 
+function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
+  const [phone4, setPhone4] = useState('');
+  const [memberData, setMemberData] = useState<MemberData | null>(null);
+  const [pointsInput, setPointsInput] = useState('');
+
+  async function handleSearchMember(e: React.FormEvent) {
+    e.preventDefault();
+    const clean = phone4.trim();
+    if (clean.length !== 4) {
+      setToast('กรุณากรอกเบอร์โทร 4 ตัวท้ายให้ครบถ้วน');
+      return;
+    }
+    const snap = await get(ref(db, `members/${clean}`));
+    if (snap.exists()) {
+      setMemberData(snap.val());
+      setToast(`พบข้อมูลสมาชิก #${clean}`);
+    } else {
+      setMemberData({ phone4: clean, points: 0, updatedAt: Date.now() });
+      setToast(`ไม่พบข้อมูลเดิม สร้างบัญชีใหม่สำหรับ #${clean}`);
+    }
+  }
+
+  async function handleUpdatePoints(delta: number) {
+    if (!memberData) return;
+    const amount = Number(pointsInput);
+    if (!amount || amount <= 0) {
+      setToast('กรุณาระบุจำนวนคะแนนที่ถูกต้อง');
+      return;
+    }
+
+    const currentPoints = Number(memberData.points || 0);
+    const newPoints =
+      delta === '+'
+        ? currentPoints + amount
+        : Math.max(0, currentPoints - amount);
+
+    const memberRef = ref(db, `members/${memberData.phone4}`);
+    await set(memberRef, {
+      phone4: memberData.phone4,
+      points: newPoints,
+      updatedAt: Date.now(),
+    });
+
+    setMemberData({ ...memberData, points: newPoints });
+    setPointsInput('');
+    setToast(
+      delta === '+'
+        ? `เพิ่ม ${amount} แต้มให้สมาชิก #${memberData.phone4} เรียบร้อย`
+        : `หัก ${amount} แต้มจากสมาชิก #${memberData.phone4} เรียบร้อย`
+    );
+  }
+
+  return (
+    <div className="mt-6 max-w-xl mx-auto p-6 rounded-3xl bg-[#0D1117] border border-white/10 shadow-xl">
+      <h2 className="text-xl font-black text-white mb-4 flex items-center gap-2">
+        <Award className="text-amber-400" size={24} /> จัดการแต้มสะสมสมาชิก (Add
+        / Deduct Points)
+      </h2>
+
+      <form onSubmit={handleSearchMember} className="flex gap-2 mb-6">
+        <input
+          type="text"
+          maxLength={4}
+          value={phone4}
+          onChange={(e) => setPhone4(e.target.value.replace(/\D/g, ''))}
+          placeholder="กรอกเบอร์โทร 4 ตัวท้าย..."
+          className="flex-1 px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/10 font-mono text-lg text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+        />
+        <button
+          type="submit"
+          className="px-6 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black text-sm transition-all shadow-[0_0_20px_rgba(245,158,11,0.4)]"
+        >
+          ค้นหาสมาชิก
+        </button>
+      </form>
+
+      {memberData && (
+        <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4 animate-fadeIn">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs text-neutral-400 font-bold block">
+                สมาชิกเบอร์ท้าย
+              </span>
+              <span className="text-2xl font-mono font-black text-white">
+                #{memberData.phone4}
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-xs text-neutral-400 font-bold block">
+                คะแนนสะสมปัจจุบัน
+              </span>
+              <span className="text-3xl font-mono font-black text-amber-400">
+                {memberData.points} แต้ม
+              </span>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-white/10 space-y-3">
+            <label className="block text-xs font-bold text-neutral-300">
+              ระบุจำนวนคะแนน
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={pointsInput}
+              onChange={(e) => setPointsInput(e.target.value)}
+              placeholder="เช่น 50"
+              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-base font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleUpdatePoints('+')}
+                className="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+              >
+                <PlusCircle size={18} /> เติมแต้ม (+)
+              </button>
+              <button
+                onClick={() => handleUpdatePoints('-')}
+                className="flex-1 py-3 rounded-xl bg-rose-500 hover:bg-rose-400 text-black font-black text-sm flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+              >
+                <MinusCircle size={18} /> หักแต้ม (-)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomersManager({ allOrders }: { allOrders: Order[] }) {
-  const [members, setMembers] = useState<Record<string, MemberData>>({});
-  const [search, setSearch] = useState<string>('');
-  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [membersList, setMembersList] = useState<MemberData[]>([]);
 
   useEffect(() => {
     const membersRef = ref(db, 'members');
-    const unsubscribe = onValue(membersRef, (snapshot) => {
-      const data = snapshot.val() || {};
-      setMembers(data);
+    const unsub = onValue(membersRef, (snap) => {
+      const data = snap.val();
+      if (data) {
+        const list: MemberData[] = Object.keys(data).map((k) => ({
+          phone4: data[k].phone4 || k,
+          points: data[k].points || 0,
+          updatedAt: data[k].updatedAt || Date.now(),
+        }));
+        list.sort((a, b) => b.updatedAt - a.updatedAt);
+        setMembersList(list);
+      } else {
+        setMembersList([]);
+      }
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, []);
 
-  const rows = useMemo(() => {
-    const phones = new Set<string>([
-      ...Object.keys(members),
-      ...allOrders.map((o) => o.memberPhoneCode || '').filter(Boolean),
-    ]);
-
-    return Array.from(phones)
-      .map((phone4) => {
-        const member = members[phone4];
-        const history = allOrders.filter((o) => o.memberPhoneCode === phone4);
-        const doneOrders = history.filter((o) => o.status === 'done');
-        const totalSpent = doneOrders.reduce((sum, o) => sum + o.total, 0);
-        const earned = doneOrders.reduce((sum, o) => sum + (o.earnedPoints || 0), 0);
-        const redeemed = history.reduce((sum, o) => sum + (o.redeemedPoints || 0), 0);
-        const lastOrder = history.length ? Math.max(...history.map((o) => o.createdAt)) : 0;
-        return {
-          phone4,
-          points: Number(member?.points || 0),
-          orderCount: history.length,
-          doneCount: doneOrders.length,
-          totalSpent,
-          earned,
-          redeemed,
-          lastOrder,
-        };
-      })
-      .filter((row) => row.phone4.includes(search.trim()))
-      .sort((a, b) => b.lastOrder - a.lastOrder);
-  }, [members, allOrders, search]);
-
-  const selected = selectedPhone ? rows.find((r) => r.phone4 === selectedPhone) : null;
-  const selectedHistory = selectedPhone
-    ? allOrders.filter((o) => o.memberPhoneCode === selectedPhone)
-    : [];
+  const filteredMembers = useMemo(() => {
+    if (!searchQuery.trim()) return membersList;
+    return membersList.filter((m) => m.phone4.includes(searchQuery.trim()));
+  }, [membersList, searchQuery]);
 
   return (
-    <div className="mt-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-        <div>
-          <h2 className="text-xl font-black text-cyan-300 flex items-center gap-2">
-            <Users size={22} /> Customer / Members
+    <div className="mt-6 space-y-6">
+      <div className="p-6 rounded-3xl bg-[#0D1117] border border-white/10 shadow-xl">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+          <h2 className="text-xl font-black text-white flex items-center gap-2">
+            <Users className="text-cyan-400" size={22} />{' '}
+            รายชื่อลูกค้าสมาชิกทั้งหมด ({membersList.length} คน)
           </h2>
-          <p className="text-sm text-neutral-400 mt-1">
-            ข้อมูลสมาชิก คะแนน และประวัติการสั่งซื้อจาก Firebase
+
+          <div className="relative w-full sm:w-72">
+            <Search
+              size={16}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) =>
+                setSearchQuery(e.target.value.replace(/\D/g, ''))
+              }
+              placeholder="ค้นหาเบอร์โทร 4 ตัวท้าย..."
+              maxLength={4}
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-cyan-300 placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+            />
+          </div>
+        </div>
+
+        {filteredMembers.length === 0 ? (
+          <p className="text-neutral-500 text-sm py-8 text-center">
+            ไม่พบข้อมูลสมาชิก
           </p>
-        </div>
-        <div className="relative w-full sm:w-64">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value.replace(/\D/g, '').slice(0, 4))}
-            inputMode="numeric"
-            maxLength={4}
-            placeholder="ค้นหาเบอร์ 4 หลัก"
-            className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-cyan-400"
-          />
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredMembers.map((m) => {
+              const customerOrders = allOrders.filter(
+                (o) => o.memberPhoneCode === m.phone4
+              );
+              const totalSpent = customerOrders
+                .filter((o) => o.status === 'done')
+                .reduce((sum, o) => sum + o.total, 0);
+
+              return (
+                <div
+                  key={m.phone4}
+                  className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-xl bg-cyan-400/10 text-cyan-400">
+                        <User size={18} />
+                      </div>
+                      <span className="text-lg font-mono font-black text-white">
+                        #{m.phone4}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-lg border border-amber-400/30">
+                      {m.points} แต้ม
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-white/5 text-neutral-400">
+                    <div>
+                      <span>สั่งซื้อสำเร็จ:</span>{' '}
+                      <strong className="text-white font-mono">
+                        {customerOrders.length} ครั้ง
+                      </strong>
+                    </div>
+                    <div className="text-right">
+                      <span>ยอดซื้อรวม:</span>{' '}
+                      <strong className="text-emerald-400 font-mono">
+                        ฿{totalSpent}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
-
-      {rows.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl text-neutral-400 font-bold">
-          ยังไม่พบข้อมูลสมาชิก
-        </div>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {rows.map((row) => (
-            <button
-              key={row.phone4}
-              onClick={() => setSelectedPhone(row.phone4)}
-              className="text-left p-4 rounded-2xl bg-[#0D1117] border border-white/10 hover:border-cyan-400/40 transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs text-neutral-400 font-bold">สมาชิก</p>
-                  <p className="text-xl font-black font-mono text-white">#{row.phone4}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-amber-300 font-bold">คะแนนคงเหลือ</p>
-                  <p className="text-2xl font-black font-mono text-amber-400">{row.points}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-white/10 text-center">
-                <div><p className="text-[10px] text-neutral-500">ออเดอร์</p><p className="font-black text-white">{row.orderCount}</p></div>
-                <div><p className="text-[10px] text-neutral-500">ซื้อสะสม</p><p className="font-black text-teal-300">฿{row.totalSpent}</p></div>
-                <div><p className="text-[10px] text-neutral-500">ใช้แต้ม</p><p className="font-black text-emerald-300">{row.redeemed}</p></div>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {selected && (
-        <div className="mt-6 p-5 rounded-3xl bg-[#0D1117] border border-cyan-400/30">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <div>
-              <p className="text-xs text-neutral-400 font-bold">รายละเอียดสมาชิก</p>
-              <h3 className="text-2xl font-black text-white font-mono">#{selected.phone4}</h3>
-            </div>
-            <button
-              onClick={() => setSelectedPhone(null)}
-              className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-            <StatChip label="คะแนนคงเหลือ" value={selected.points} color="text-amber-300" />
-            <StatChip label="ออเดอร์" value={selected.orderCount} color="text-cyan-300" />
-            <StatChip label="ยอดซื้อสะสม" value={`฿${selected.totalSpent}`} color="text-teal-300" />
-            <StatChip label="ใช้แต้มรวม" value={selected.redeemed} color="text-emerald-300" />
-          </div>
-
-          <h4 className="text-sm font-black text-neutral-300 mb-3 flex items-center gap-2">
-            <History size={16} /> ประวัติการซื้อ
-          </h4>
-          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-            {selectedHistory.map((order) => (
-              <div key={order.id} className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs text-neutral-500 font-mono">#{order.id.slice(-5)} · {fmtDate(order.createdAt)}</p>
-                    <p className="text-sm font-black text-white mt-1">
-                      {order.items.map((i) => `${i.qty}× ${i.nameTh}`).join(' · ')}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-mono font-black text-amber-300">฿{order.total}</p>
-                    <p className="text-[11px] font-bold text-neutral-400">{order.status}</p>
-                  </div>
-                </div>
-                {(order.redeemedPoints || 0) > 0 && (
-                  <p className="mt-2 text-xs font-black text-emerald-300">🎁 ใช้แต้มแลก {order.redeemedPoints} แต้ม</p>
-                )}
-                {order.customerNote && (
-                  <p className="mt-2 text-xs text-sky-300">💬 {order.customerNote}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -4617,82 +3874,51 @@ function StockControl({
   menu: MenuItem[];
   toggleStock: (id: string) => void;
 }) {
-  const categories: CategoryType[] = [
-    'ICED COFFEE',
-    'HOT COFFEE',
-    'MATCHA & TEA',
-    'OTHERS',
-  ];
-
   return (
-    <div className="mt-6">
-      <p className="text-sm font-semibold text-neutral-300 mb-4 flex items-center gap-1.5">
-        <Zap size={16} className="text-teal-400" /> หากปิดการใช้งานเมนูใด
-        ระบบจะทำการ <strong className="text-amber-300">ซ่อนเมنูนานั้น</strong>{' '}
-        ออกจากหน้าของลูกค้าทันที
+    <div className="mt-6 p-6 rounded-3xl bg-[#0D1117] border border-white/10 shadow-xl">
+      <h2 className="text-xl font-black text-white mb-2 flex items-center gap-2">
+        <Settings2 className="text-teal-400" size={22} /> จัดการสถานะสินค้า
+        (Hide / Show Menu Items)
+      </h2>
+      <p className="text-sm text-neutral-400 mb-6">
+        เปิด/ปิดการแสดงผลเมนูเครื่องดื่มหน้าร้านแบบเรียลไทม์
       </p>
-      {categories.map((cat) => {
-        const meta = CATEGORY_META[cat];
-        const Icon = meta.icon;
-        const items = menu.filter((m) => m.category === cat);
-        return (
-          <div key={cat} className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-teal-400/10 border border-teal-400/30 text-teal-300">
-                <Icon size={16} />
-              </span>
-              <h2 className="text-base font-extrabold text-white">
-                {meta.labelTh}
-              </h2>
-              <span className="text-xs text-neutral-400 font-mono">
-                ({meta.label})
-              </span>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {menu.map((item) => (
+          <div
+            key={item.id}
+            className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+              item.available
+                ? 'bg-white/[0.03] border-white/10'
+                : 'bg-rose-500/5 border-rose-500/20 opacity-60'
+            }`}
+          >
+            <div>
+              <p className="text-base font-black text-white">{item.nameTh}</p>
+              <p className="text-xs text-neutral-400">
+                {item.name} · ฿{item.price}
+              </p>
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className={`flex items-center justify-between gap-3 rounded-2xl border p-3.5 ${
-                    item.available
-                      ? 'border-white/10 bg-[#0D1117]'
-                      : 'border-rose-500/30 bg-rose-500/[0.04]'
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <p
-                      className={`text-base font-black truncate ${
-                        item.available
-                          ? 'text-white'
-                          : 'text-neutral-500 line-through'
-                      }`}
-                    >
-                      {item.nameTh}
-                    </p>
-                    <p className="text-xs text-neutral-400 font-medium truncate">
-                      {item.name}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => toggleStock(item.id)}
-                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors"
-                    title={item.available ? 'ซ่อนเมนูนี้' : 'แสดงเมนูนี้'}
-                  >
-                    {item.available ? (
-                      <span className="flex items-center gap-1 text-emerald-400">
-                        <ToggleRight size={22} /> แสดงเมนู
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-rose-400">
-                        <EyeOff size={16} /> ซ่อนอยู่
-                      </span>
-                    )}
-                  </button>
-                </div>
-              ))}
-            </div>
+
+            <button
+              onClick={() => toggleStock(item.id)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black border transition-all ${
+                item.available
+                  ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                  : 'bg-rose-500/20 border-rose-400/40 text-rose-300'
+              }`}
+            >
+              {item.available ? (
+                <ToggleRight size={18} />
+              ) : (
+                <EyeOff size={18} />
+              )}
+              {item.available ? 'พร้อมขาย' : 'หมด / ซ่อน'}
+            </button>
           </div>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
@@ -4706,85 +3932,64 @@ function MenuEditor({
   setEditingItem: (item: MenuItem) => void;
   setIsAddingNew: (val: boolean) => void;
 }) {
-  const categories: CategoryType[] = [
-    'ICED COFFEE',
-    'HOT COFFEE',
-    'MATCHA & TEA',
-    'OTHERS',
-  ];
-
   return (
-    <div className="mt-6">
-      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <p className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
-          <Pencil size={16} className="text-teal-400" />{' '}
-          คลิกที่เมนูเพื่อแก้ไข/ลบ หรือคลิกปุ่มเพิ่มเมนูเพื่อสร้างรายการใหม่
-        </p>
+    <div className="mt-6 p-6 rounded-3xl bg-[#0D1117] border border-white/10 shadow-xl">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-xl font-black text-white flex items-center gap-2">
+            <Pencil className="text-teal-400" size={22} /> แก้ไขเมนูและราคา
+            (Edit Menu & Prices)
+          </h2>
+          <p className="text-sm text-neutral-400 mt-0.5">
+            ปรับแต่งชื่อ ราคา และหมวดหมู่เมนูเครื่องดื่ม
+          </p>
+        </div>
+
         <button
           onClick={() => setIsAddingNew(true)}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-extrabold text-sm shadow-[0_0_15px_rgba(45,212,191,0.4)] transition-all active:scale-[0.98]"
+          className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-teal-400 hover:bg-teal-300 text-black font-black text-sm transition-all shadow-[0_0_20px_rgba(20,184,166,0.4)]"
         >
-          <Plus size={18} /> เพิ่มเมนูใหม่ (Add New Menu)
+          <Plus size={18} /> เพิ่มเมนูใหม่
         </button>
       </div>
 
-      {categories.map((cat) => {
-        const meta = CATEGORY_META[cat];
-        const Icon = meta.icon;
-        const items = menu.filter((m) => m.category === cat);
-        return (
-          <div key={cat} className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-teal-400/10 border border-teal-400/30 text-teal-300">
-                <Icon size={16} />
-              </span>
-              <h2 className="text-base font-extrabold text-white">
-                {meta.labelTh}
-              </h2>
-              <span className="text-xs text-neutral-400 font-mono">
-                ({meta.label})
-              </span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {menu.map((item) => (
+          <div
+            key={item.id}
+            className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-mono font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">
+                  {item.category}
+                </span>
+                <span className="text-xs font-mono text-neutral-400">
+                  ธีม: {item.theme}
+                </span>
+              </div>
+              <h3 className="text-lg font-black text-white mt-2">
+                {item.nameTh}
+              </h3>
+              <p className="text-xs text-neutral-400">{item.name}</p>
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => setEditingItem(item)}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#0D1117] p-3.5 cursor-pointer hover:border-teal-400/50 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="text-base font-black text-white truncate">
-                      {item.nameTh}
-                    </p>
-                    <p className="text-xs text-neutral-400 font-medium truncate">
-                      {item.name}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="font-mono font-bold text-amber-300 text-sm block">
-                      ฿{item.price}
-                    </span>
-                    <span className="text-xs text-teal-400 flex items-center justify-end gap-1 mt-0.5">
-                      <Pencil size={12} /> แก้ไข
-                    </span>
-                  </div>
-                </div>
-              ))}
+
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/5">
+              <span className="text-lg font-mono font-black text-amber-400">
+                ฿{item.price}
+              </span>
+              <button
+                onClick={() => setEditingItem(item)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-200 text-xs font-bold transition-colors"
+              >
+                <Pencil size={14} /> แก้ไขเมนู
+              </button>
             </div>
           </div>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
-}
-
-interface MenuEditModalProps {
-  item: MenuItem | null;
-  isNew: boolean;
-  onClose: () => void;
-  onSave: (id: string, updates: Partial<MenuItem>) => void;
-  onAdd: (newItem: Omit<MenuItem, 'id'>) => void;
-  onDelete: (id: string) => void;
 }
 
 function MenuEditModal({
@@ -4794,9 +3999,16 @@ function MenuEditModal({
   onSave,
   onAdd,
   onDelete,
-}: MenuEditModalProps) {
-  const [nameTh, setNameTh] = useState(item?.nameTh || '');
+}: {
+  item: MenuItem | null;
+  isNew: boolean;
+  onClose: () => void;
+  onSave: (id: string, updates: Partial<MenuItem>) => void;
+  onAdd: (item: Omit<MenuItem, 'id'>) => void;
+  onDelete: (id: string) => void;
+}) {
   const [name, setName] = useState(item?.name || '');
+  const [nameTh, setNameTh] = useState(item?.nameTh || '');
   const [category, setCategory] = useState<CategoryType>(
     item?.category || 'ICED COFFEE'
   );
@@ -4805,6 +4017,8 @@ function MenuEditModal({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!name || !nameTh) return;
+
     if (isNew) {
       onAdd({
         name,
@@ -4832,9 +4046,9 @@ function MenuEditModal({
         onClick={onClose}
       />
       <div className="relative w-full max-w-md bg-[#0D1117] border border-white/10 rounded-3xl p-6 shadow-2xl">
-        <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-5">
+        <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
           <h3 className="text-xl font-black text-white">
-            {isNew ? 'เพิ่มเมนูใหม่ (Add Menu)' : 'แก้ไขเมนู (Edit Menu)'}
+            {isNew ? 'เพิ่มเมนูใหม่' : 'แก้ไขเมนู'}
           </h3>
           <button
             onClick={onClose}
@@ -4847,7 +4061,7 @@ function MenuEditModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-neutral-300 mb-1">
-              ชื่อภาษาไทย (Thai Name)
+              ชื่อภาษาไทย
             </label>
             <input
               type="text"
@@ -4855,13 +4069,13 @@ function MenuEditModal({
               value={nameTh}
               onChange={(e) => setNameTh(e.target.value)}
               placeholder="เช่น อเมริกาโน่เย็น"
-              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
             />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-neutral-300 mb-1">
-              ชื่อภาษาอังกฤษ (English Name)
+              ชื่อภาษาอังกฤษ
             </label>
             <input
               type="text"
@@ -4869,92 +4083,75 @@ function MenuEditModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="เช่น Iced Americano"
-              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-neutral-300 mb-1">
+              หมวดหมู่ (Category)
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as CategoryType)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#161b22] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+            >
+              <option value="ICED COFFEE">ICED COFFEE (กาแฟเย็น)</option>
+              <option value="HOT COFFEE">HOT COFFEE (กาแฟร้อน)</option>
+              <option value="MATCHA & TEA">MATCHA & TEA (มัทฉะ & ชา)</option>
+              <option value="OTHERS">OTHERS (อื่นๆ)</option>
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-neutral-300 mb-1">
-                หมวดหมู่ (Category)
+                ธีมสีปุ่ม
               </label>
               <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as CategoryType)}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#161B22] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as ThemeType)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#161b22] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
               >
-                <option value="ICED COFFEE">ICED COFFEE</option>
-                <option value="HOT COFFEE">HOT COFFEE</option>
-                <option value="MATCHA & TEA">MATCHA & TEA</option>
-                <option value="OTHERS">OTHERS</option>
+                <option value="blue">Blue (ฟ้า)</option>
+                <option value="brown">Brown (น้ำตาล)</option>
+                <option value="green">Green (เขียว)</option>
+                <option value="teal">Teal (เขียวอมฟ้า)</option>
+                <option value="gray">Gray (เทา)</option>
               </select>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-neutral-300 mb-1">
-                ธีมสีปุ่ม (Theme)
+                ราคา (บาท)
               </label>
-              <select
-                value={theme}
-                onChange={(e) => setTheme(e.target.value as ThemeType)}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#161B22] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium"
-              >
-                <option value="blue">Blue (Iced)</option>
-                <option value="brown">Brown (Hot)</option>
-                <option value="green">Green (Matcha)</option>
-                <option value="gray">Gray (Others)</option>
-              </select>
+              <input
+                type="number"
+                required
+                min={0}
+                value={price}
+                onChange={(e) => setPrice(Number(e.target.value))}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-amber-300 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              />
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-neutral-300 mb-1">
-              ราคา (Price - บาท)
-            </label>
-            <input
-              type="number"
-              required
-              min={0}
-              value={price}
-              onChange={(e) => setPrice(Number(e.target.value))}
-              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-teal-400"
-            />
-          </div>
-
-          <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3">
+          <div className="pt-4 border-t border-white/10 flex gap-3">
             {!isNew && item && (
               <button
                 type="button"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `คุณต้องการลบเมนู ${item.nameTh} ออกจากระบบใช่หรือไม่?`
-                    )
-                  ) {
-                    onDelete(item.id);
-                  }
-                }}
-                className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-sm transition-colors flex items-center gap-1.5"
+                onClick={() => onDelete(item.id)}
+                className="px-4 py-3 rounded-2xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold text-sm"
               >
-                <Trash2 size={16} /> ลบเมนู
+                ลบเมนู
               </button>
             )}
-
-            <div className="flex gap-2 ml-auto">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-300 font-bold text-sm transition-colors"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2.5 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-black text-sm transition-all shadow-[0_0_15px_rgba(20,184,166,0.4)]"
-              >
-                บันทึก
-              </button>
-            </div>
+            <button
+              type="submit"
+              className="flex-1 py-3 rounded-2xl bg-teal-400 hover:bg-teal-300 text-black font-black text-sm shadow-[0_0_20px_rgba(20,184,166,0.4)]"
+            >
+              {isNew ? 'เพิ่มเมนู' : 'บันทึก'}
+            </button>
           </div>
         </form>
       </div>
