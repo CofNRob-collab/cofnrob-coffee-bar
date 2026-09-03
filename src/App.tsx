@@ -111,6 +111,9 @@ interface CartItem {
   qty: number;
   unitPrice: number;
   total: number;
+  originalUnitPrice?: number;
+  redeemedWithPoints?: boolean;
+  pointsCost?: number;
 }
 
 interface Order {
@@ -119,6 +122,10 @@ interface Order {
   memberPhoneCode?: string;
   earnedPoints?: number;
   pointsProcessed?: boolean;
+  redeemedPoints?: number;
+  pointsRedeemed?: boolean;
+  pointsRefunded?: boolean;
+  customerNote?: string;
   items: CartItem[];
   total: number;
   createdAt: number;
@@ -458,7 +465,7 @@ const SWEET_PRESETS_11_LEVEL = [
   { value: 62, labelTh: 'ระดับ 62%' },
   { value: 75, label: '75%', labelTh: 'หวานกำลังดี' },
   { value: 87, labelTh: 'ระดับ 87%' },
-  { value: 100, label: '100%', labelTh: 'หวานปกติ' },
+  { value: 100, label: '100%',labelTh: 'หวานปกติ' },
   { value: 112, labelTh: 'ระดับ 112%' },
   { value: 120, label: '120%', labelTh: 'หวานชลบุรี' },
 ];
@@ -580,6 +587,7 @@ export default function App() {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [memberPhoneCode, setMemberPhoneCode] = useState<string>('');
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [orderNote, setOrderNote] = useState<string>('');
   const [modalItem, setModalItem] = useState<MenuItem | null>(null);
   const [sweetness, setSweetness] = useState<number>(100);
   const [qty, setQty] = useState<number>(1);
@@ -703,6 +711,10 @@ export default function App() {
             memberPhoneCode: itemData.memberPhoneCode || '',
             earnedPoints: itemData.earnedPoints || 0,
             pointsProcessed: itemData.pointsProcessed || false,
+            redeemedPoints: itemData.redeemedPoints || 0,
+            pointsRedeemed: itemData.pointsRedeemed || false,
+            pointsRefunded: itemData.pointsRefunded || false,
+            customerNote: itemData.customerNote || '',
             items,
             total: itemData.total || items.reduce((s, i) => s + i.total, 0),
             createdAt: itemData.createdAt || Date.now(),
@@ -800,6 +812,7 @@ export default function App() {
       sweetness,
       qty,
       unitPrice: modalItem.price,
+      originalUnitPrice: modalItem.price,
       total: modalItem.price * qty,
     };
 
@@ -870,10 +883,16 @@ export default function App() {
             if (item.cartId === cartId) {
               const newQty = item.qty + delta;
               if (newQty <= 0) return null;
+              const basePrice = item.redeemedWithPoints
+                ? item.originalUnitPrice ?? menu.find((m) => m.id === item.itemId)?.price ?? item.unitPrice
+                : item.unitPrice;
               return {
                 ...item,
                 qty: newQty,
-                total: item.unitPrice * newQty,
+                unitPrice: item.redeemedWithPoints ? basePrice : item.unitPrice,
+                total: item.redeemedWithPoints ? basePrice * newQty : item.unitPrice * newQty,
+                redeemedWithPoints: false,
+                pointsCost: 0,
               };
             }
             return item;
@@ -882,23 +901,110 @@ export default function App() {
     );
   }
 
-  function submitCartOrder() {
-    if (!shopOpen) {
-      setToast('ร้านปิดอยู่ ไม่สามารถส่งออเดอร์ได้');
+  async function redeemCartItem(cartId: string) {
+    const trimmedPhone = memberPhoneCode.trim();
+    if (trimmedPhone.length !== 4) {
+      setToast('กรุณากรอกเบอร์สมาชิก 4 หลักก่อนใช้แต้มแลกเมนู');
       return;
     }
-    if (cart.length === 0) return;
+
+    const target = cart.find((item) => item.cartId === cartId);
+    if (!target) return;
+    if (target.redeemedWithPoints) return;
+
+    const memberSnap = await get(ref(db, `members/${trimmedPhone}`));
+    if (!memberSnap.exists()) {
+      setToast(`ไม่พบสมาชิก #${trimmedPhone}`);
+      return;
+    }
+
+    const currentPoints = Number(memberSnap.val().points || 0);
+    const alreadySelected = cart.reduce(
+      (sum, item) =>
+        sum + (item.redeemedWithPoints ? item.pointsCost || item.unitPrice * item.qty : 0),
+      0
+    );
+    const pointsCost = (target.originalUnitPrice ?? target.unitPrice) * target.qty;
+
+    if (currentPoints - alreadySelected < pointsCost) {
+      setToast(`คะแนนไม่พอสำหรับ ${target.nameTh} (ต้องใช้ ${pointsCost} แต้ม)`);
+      return;
+    }
+
+    setCart((prev) =>
+      prev.map((item) =>
+        item.cartId === cartId
+          ? {
+              ...item,
+              originalUnitPrice: item.originalUnitPrice ?? item.unitPrice,
+              unitPrice: 0,
+              total: 0,
+              redeemedWithPoints: true,
+              pointsCost,
+            }
+          : item
+      )
+    );
+    setToast(`เลือก ${target.nameTh} เพื่อแลกด้วย ${pointsCost} แต้มแล้ว`);
+  }
+
+  function unredeemCartItem(cartId: string) {
+    setCart((prev) =>
+      prev.map((item) => {
+        if (item.cartId !== cartId) return item;
+        const originalPrice = item.originalUnitPrice ?? menu.find((m) => m.id === item.itemId)?.price ?? 0;
+        return {
+          ...item,
+          unitPrice: originalPrice,
+          total: originalPrice * item.qty,
+          redeemedWithPoints: false,
+          pointsCost: 0,
+        };
+      })
+    );
+    setToast('ยกเลิกการใช้แต้มแลกเมนูแล้ว');
+  }
+
+  async function submitCartOrder(): Promise<boolean> {
+    if (!shopOpen) {
+      setToast('ร้านปิดอยู่ ไม่สามารถส่งออเดอร์ได้');
+      return false;
+    }
+    if (cart.length === 0) return false;
 
     const trimmedPhone = memberPhoneCode.trim();
     const isMember = trimmedPhone.length === 4;
+    const redeemedPoints = isMember
+      ? cart.reduce((sum, item) => sum + (item.redeemedWithPoints ? item.pointsCost || item.unitPrice * item.qty : 0), 0)
+      : 0;
     const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
     const earnedPoints = isMember ? totalAmount / 10 : 0;
+
+    let memberPointsAfterRedeem = 0;
+    if (isMember && redeemedPoints > 0) {
+      const memberRef = ref(db, `members/${trimmedPhone}`);
+      const snapshot = await get(memberRef);
+      if (!snapshot.exists()) {
+        setToast(`ไม่พบสมาชิก #${trimmedPhone}`);
+        return false;
+      }
+      const currentPoints = Number(snapshot.val().points || 0);
+      if (currentPoints < redeemedPoints) {
+        setToast(`คะแนนไม่พอสำหรับการแลก (มี ${currentPoints} แต้ม แต่ต้องใช้ ${redeemedPoints} แต้ม)`);
+        return false;
+      }
+      memberPointsAfterRedeem = currentPoints - redeemedPoints;
+    }
 
     const newOrderData = {
       customerName: isMember ? `สมาชิก #${trimmedPhone}` : 'Guest',
       memberPhoneCode: isMember ? trimmedPhone : '',
       earnedPoints: earnedPoints,
       pointsProcessed: false,
+      redeemedPoints,
+      pointsRedeemed: redeemedPoints > 0,
+      pointsRefunded: false,
+      customerNote: orderNote.trim(),
       items: cart,
       total: totalAmount,
       createdAt: Date.now(),
@@ -907,20 +1013,74 @@ export default function App() {
 
     const ordersRef = ref(db, 'orders');
     const newOrderRef = push(ordersRef);
-    set(newOrderRef, newOrderData);
+
+    try {
+      if (isMember && redeemedPoints > 0) {
+        await set(ref(db, `members/${trimmedPhone}`), {
+          phone4: trimmedPhone,
+          points: memberPointsAfterRedeem,
+          updatedAt: Date.now(),
+        });
+      }
+      await set(newOrderRef, newOrderData);
+    } catch (err) {
+      if (isMember && redeemedPoints > 0) {
+        const memberRef = ref(db, `members/${trimmedPhone}`);
+        const rollbackSnap = await get(memberRef);
+        if (rollbackSnap.exists()) {
+          const rollbackPoints = Number(rollbackSnap.val().points || 0);
+          await update(memberRef, {
+            points: rollbackPoints + redeemedPoints,
+            updatedAt: Date.now(),
+          });
+        }
+      }
+      setToast('ไม่สามารถส่งออเดอร์ได้ กรุณาลองใหม่อีกครั้ง');
+      return false;
+    }
 
     setToast(
-      isMember
-        ? `ส่งออเดอร์เรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้ากดรับ/ทำเสร็จ)`
+      redeemedPoints > 0
+        ? `ส่งออเดอร์เรียบร้อย! ใช้ ${redeemedPoints} แต้มแลกเมนู และชำระ ฿${totalAmount}`
+        : isMember
+        ? `ส่งออเดอร์เรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้าทำเสร็จ)`
         : 'ส่งออเดอร์เรียบร้อย! (รายการของ Guest)'
     );
     setCart([]);
+    setOrderNote('');
     sound.playSent();
+    return true;
   }
 
   async function advanceOrder(id: string, status: OrderStatus) {
     const targetOrder = orders.find((o) => o.id === id);
     if (!targetOrder) return;
+
+    if (
+      status === 'cancelled' &&
+      targetOrder.memberPhoneCode &&
+      (targetOrder.redeemedPoints || 0) > 0 &&
+      targetOrder.pointsRedeemed &&
+      !targetOrder.pointsRefunded
+    ) {
+      const phone4 = targetOrder.memberPhoneCode;
+      const pointsToRefund = targetOrder.redeemedPoints || 0;
+      const memberRef = ref(db, `members/${phone4}`);
+      const snapshot = await get(memberRef);
+      const currentPoints = snapshot.exists() ? Number(snapshot.val().points || 0) : 0;
+      await set(memberRef, {
+        phone4,
+        points: currentPoints + pointsToRefund,
+        updatedAt: Date.now(),
+      });
+      await update(ref(db, `orders/${id}`), {
+        status: 'cancelled',
+        pointsRefunded: true,
+      });
+      sound.playDone();
+      setToast(`ยกเลิกออเดอร์และคืน ${pointsToRefund} แต้มให้สมาชิก #${phone4} แล้ว`);
+      return;
+    }
 
     if (
       status === 'done' &&
@@ -1107,6 +1267,10 @@ export default function App() {
           removeFromCart={removeFromCart}
           updateCartQty={updateCartQty}
           submitCartOrder={submitCartOrder}
+          orderNote={orderNote}
+          setOrderNote={setOrderNote}
+          redeemCartItem={redeemCartItem}
+          unredeemCartItem={unredeemCartItem}
           shopOpen={shopOpen}
           shopMessage={shopMessage}
           orders={orders}
@@ -1308,10 +1472,14 @@ interface CustomerViewProps {
   cart: CartItem[];
   removeFromCart: (cartId: string) => void;
   updateCartQty: (cartId: string, delta: number) => void;
-  submitCartOrder: () => void;
+  submitCartOrder: () => Promise<boolean>;
   shopOpen: boolean;
   shopMessage: string;
   orders: Order[];
+  orderNote: string;
+  setOrderNote: (note: string) => void;
+  redeemCartItem: (cartId: string) => void;
+  unredeemCartItem: (cartId: string) => void;
   setToast: (msg: string) => void;
 }
 
@@ -1329,6 +1497,10 @@ function CustomerView({
   shopOpen,
   shopMessage,
   orders,
+  orderNote,
+  setOrderNote,
+  redeemCartItem,
+  unredeemCartItem,
   setToast,
 }: CustomerViewProps) {
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -1774,14 +1946,40 @@ function CustomerView({
                       <p className="text-xs text-neutral-400 truncate">
                         {item.name}
                       </p>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-xs font-bold text-amber-300">
                           หวาน {item.sweetness}%
                         </span>
-                        <span className="text-xs text-neutral-400 font-mono">
-                          ฿{item.unitPrice}/แก้ว
-                        </span>
+                        {item.redeemedWithPoints ? (
+                          <span className="text-xs font-black text-emerald-300 bg-emerald-500/10 border border-emerald-400/30 px-2 py-0.5 rounded">
+                            🎁 ใช้แต้ม {item.pointsCost} แต้ม · ฿0
+                          </span>
+                        ) : (
+                          <span className="text-xs text-neutral-400 font-mono">
+                            ฿{item.unitPrice}/แก้ว
+                          </span>
+                        )}
                       </div>
+                      {memberPhoneCode.trim().length === 4 && (
+                        <button
+                          onClick={() =>
+                            item.redeemedWithPoints
+                              ? unredeemCartItem(item.cartId)
+                              : redeemCartItem(item.cartId)
+                          }
+                          className={`mt-2 px-2.5 py-1 rounded-lg text-[11px] font-black border transition-colors ${
+                            item.redeemedWithPoints
+                              ? 'bg-rose-500/10 border-rose-400/30 text-rose-300 hover:bg-rose-500/20'
+                              : 'bg-amber-400/10 border-amber-400/30 text-amber-300 hover:bg-amber-400/20'
+                          }`}
+                        >
+                          {item.redeemedWithPoints
+                            ? 'ยกเลิกใช้แต้ม'
+                            : `🎁 ใช้ ${
+                                (item.originalUnitPrice ?? item.unitPrice) * item.qty
+                              } แต้มแลกเมนูนี้`}
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -1830,18 +2028,38 @@ function CustomerView({
                   </span>
                 </div>
 
-                <div className="mb-4 text-xs sm:text-sm text-emerald-400 font-bold flex items-center gap-1.5">
-                  <Award size={16} />{' '}
+                <div className="mb-3 text-xs sm:text-sm font-bold flex items-center gap-1.5">
+                  <Award size={16} className="text-amber-400" />{' '}
                   {memberPhoneCode.trim().length === 4
-                    ? `จะได้รับคะแนนสะสม: +${cartTotal / 10} คะแนน`
+                    ? `จะได้รับคะแนนสะสมจากยอดชำระ: +${cartTotal / 10} คะแนน`
                     : 'สั่งซื้อในฐานะ Guest (ไม่ได้รับคะแนน)'}
+                </div>
+
+                {cart.some((item) => item.redeemedWithPoints) && (
+                  <div className="mb-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-400/30 text-emerald-300 text-xs font-black">
+                    🎁 ใช้แต้มแลกแล้ว {cart.reduce((sum, item) => sum + (item.redeemedWithPoints ? item.pointsCost || 0 : 0), 0)} แต้ม · เมนูที่แลกคิดราคา ฿0
+                  </div>
+                )}
+
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-neutral-400 mb-1.5">
+                    ข้อความถึงบาริสต้า / Message to Barista
+                  </label>
+                  <input
+                    type="text"
+                    value={orderNote}
+                    onChange={(e) => setOrderNote(e.target.value)}
+                    maxLength={120}
+                    placeholder="ฝากข้อความเพิ่มเติมถึงบาริสต้า..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
                 </div>
 
                 <button
                   disabled={!shopOpen}
-                  onClick={() => {
-                    submitCartOrder();
-                    setIsCartOpen(false);
+                  onClick={async () => {
+                    const ok = await submitCartOrder();
+                    if (ok) setIsCartOpen(false);
                   }}
                   className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-extrabold text-lg transition-transform shadow-lg ${
                     shopOpen
@@ -2112,13 +2330,7 @@ interface BaristaContainerProps {
   authLoading: boolean;
   menu: MenuItem[];
   toggleStock: (id: string) => void;
-  baristaTab:
-    | 'orders'
-    | 'points'
-    | 'customers'
-    | 'stock'
-    | 'editor'
-    | 'expenses';
+  baristaTab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses';
   setBaristaTab: (
     tab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses'
   ) => void;
@@ -2234,13 +2446,7 @@ interface BaristaViewProps {
   user: any;
   menu: MenuItem[];
   toggleStock: (id: string) => void;
-  baristaTab:
-    | 'orders'
-    | 'points'
-    | 'customers'
-    | 'stock'
-    | 'editor'
-    | 'expenses';
+  baristaTab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses';
   setBaristaTab: (
     tab: 'orders' | 'points' | 'customers' | 'stock' | 'editor' | 'expenses'
   ) => void;
@@ -2463,11 +2669,11 @@ function BaristaView({
           onClick={() => setBaristaTab('customers')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
             baristaTab === 'customers'
-              ? 'bg-amber-400 text-black'
+              ? 'bg-cyan-400 text-black'
               : 'text-neutral-300 hover:text-neutral-100'
           }`}
         >
-          <Users size={16} /> Customers / Members
+          <Users size={16} /> ลูกค้า / Members
         </button>
 
         <button
@@ -2523,7 +2729,9 @@ function BaristaView({
 
       {baristaTab === 'points' && <PointsManager setToast={setToast} />}
 
-      {baristaTab === 'customers' && <CustomerMembers allOrders={allOrders} />}
+      {baristaTab === 'customers' && (
+        <CustomersManager allOrders={allOrders} />
+      )}
 
       {baristaTab === 'stock' && (
         <StockControl menu={menu} toggleStock={toggleStock} />
@@ -3190,339 +3398,6 @@ function PointsManager({ setToast }: { setToast: (msg: string) => void }) {
   );
 }
 
-interface CustomerMemberRow {
-  phone4: string;
-  points: number;
-  updatedAt: number;
-}
-
-function CustomerMembers({ allOrders }: { allOrders: Order[] }) {
-  const [members, setMembers] = useState<CustomerMemberRow[]>([]);
-  const [search, setSearch] = useState<string>('');
-  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
-
-  useEffect(() => {
-    const membersRef = ref(db, 'members');
-    const unsubscribe = onValue(membersRef, (snapshot) => {
-      const data = snapshot.val();
-      if (!data) {
-        setMembers([]);
-        return;
-      }
-
-      const list: CustomerMemberRow[] = Object.keys(data).map((key) => ({
-        phone4: data[key]?.phone4 || key,
-        points: Number(data[key]?.points || 0),
-        updatedAt: Number(data[key]?.updatedAt || 0),
-      }));
-
-      list.sort((a, b) => b.updatedAt - a.updatedAt);
-      setMembers(list);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const memberStats = useMemo(() => {
-    const map: Record<
-      string,
-      {
-        orders: Order[];
-        completedOrders: Order[];
-        totalSpent: number;
-        earnedPoints: number;
-      }
-    > = {};
-
-    allOrders.forEach((order) => {
-      const phone = order.memberPhoneCode?.trim();
-      if (!phone || phone.length !== 4) return;
-
-      if (!map[phone]) {
-        map[phone] = {
-          orders: [],
-          completedOrders: [],
-          totalSpent: 0,
-          earnedPoints: 0,
-        };
-      }
-
-      map[phone].orders.push(order);
-
-      if (order.status === 'done') {
-        map[phone].completedOrders.push(order);
-        map[phone].totalSpent += order.total;
-        map[phone].earnedPoints += order.earnedPoints || order.total / 10;
-      }
-    });
-
-    return map;
-  }, [allOrders]);
-
-  const filteredMembers = useMemo(() => {
-    const q = search.trim();
-    if (!q) return members;
-    return members.filter((member) => member.phone4.includes(q));
-  }, [members, search]);
-
-  const selectedMember = selectedPhone
-    ? members.find((member) => member.phone4 === selectedPhone) || null
-    : null;
-
-  const selectedStats = selectedPhone ? memberStats[selectedPhone] : undefined;
-  const selectedOrders = selectedStats
-    ? [...selectedStats.orders].sort((a, b) => b.createdAt - a.createdAt)
-    : [];
-
-  const totalMembers = members.length;
-  const membersWithHistory = members.filter(
-    (member) => (memberStats[member.phone4]?.orders.length || 0) > 0
-  ).length;
-
-  return (
-    <div className="mt-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
-        <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-2">
-            <Users size={22} className="text-amber-400" /> Customer / Members
-          </h2>
-          <p className="text-sm text-neutral-400 font-semibold mt-1">
-            ข้อมูลสมาชิกจาก Firebase และประวัติการสั่งซื้อจาก Orders
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <StatChip
-            label="สมาชิกทั้งหมด"
-            value={totalMembers}
-            color="text-amber-300"
-          />
-          <StatChip
-            label="มีประวัติซื้อ"
-            value={membersWithHistory}
-            color="text-emerald-300"
-          />
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-[360px_1fr] gap-5">
-        <div className="rounded-2xl bg-[#0D1117] border border-white/10 p-4 h-fit">
-          <div className="relative mb-4">
-            <Search
-              size={17}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500"
-            />
-            <input
-              value={search}
-              onChange={(e) =>
-                setSearch(e.target.value.replace(/\D/g, '').slice(0, 4))
-              }
-              inputMode="numeric"
-              maxLength={4}
-              placeholder="ค้นหาสมาชิกด้วยเลข 4 ตัวท้าย"
-              className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-amber-300 placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
-            />
-          </div>
-
-          {filteredMembers.length === 0 ? (
-            <div className="text-center py-10 border border-dashed border-white/10 rounded-xl text-neutral-500 text-sm font-bold">
-              ไม่พบข้อมูลสมาชิก
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
-              {filteredMembers.map((member) => {
-                const stats = memberStats[member.phone4];
-                const orderCount = stats?.orders.length || 0;
-                const isSelected = selectedPhone === member.phone4;
-
-                return (
-                  <button
-                    key={member.phone4}
-                    onClick={() => setSelectedPhone(member.phone4)}
-                    className={`w-full text-left p-3.5 rounded-xl border transition-all ${
-                      isSelected
-                        ? 'bg-amber-400/10 border-amber-400/50 shadow-[0_0_18px_rgba(245,158,11,0.12)]'
-                        : 'bg-white/[0.02] border-white/10 hover:border-white/25 hover:bg-white/[0.04]'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center shrink-0">
-                          <User size={17} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-mono font-black text-white text-base">
-                            #{member.phone4}
-                          </p>
-                          <p className="text-xs text-neutral-500 font-semibold">
-                            {orderCount} ออเดอร์
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-mono font-black text-amber-300">
-                          {member.points}
-                        </p>
-                        <p className="text-[10px] text-neutral-500">คะแนน</p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div>
-          {!selectedMember ? (
-            <div className="min-h-[300px] rounded-2xl bg-[#0D1117] border border-dashed border-white/10 flex items-center justify-center text-center p-8">
-              <div>
-                <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center">
-                  <History size={28} />
-                </div>
-                <p className="text-base font-bold text-neutral-300">
-                  เลือกสมาชิกเพื่อดูรายละเอียด
-                </p>
-                <p className="text-xs text-neutral-500 mt-1">
-                  คะแนนปัจจุบัน ยอดซื้อ และประวัติการสั่งซื้อ
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="rounded-2xl bg-[#0D1117] border border-amber-400/30 p-5">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center">
-                      <User size={24} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-neutral-400 font-bold">
-                        สมาชิก
-                      </p>
-                      <h3 className="text-2xl font-black text-white font-mono">
-                        #{selectedMember.phone4}
-                      </h3>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-amber-300 font-bold">
-                      คะแนนปัจจุบัน
-                    </p>
-                    <p className="text-3xl font-black text-amber-400 font-mono">
-                      {selectedMember.points}
-                      <span className="text-sm ml-1">คะแนน</span>
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
-                  <StatChip
-                    label="ออเดอร์ทั้งหมด"
-                    value={selectedStats?.orders.length || 0}
-                    color="text-cyan-300"
-                  />
-                  <StatChip
-                    label="ซื้อสำเร็จ"
-                    value={selectedStats?.completedOrders.length || 0}
-                    color="text-emerald-300"
-                  />
-                  <StatChip
-                    label="ยอดซื้อสะสม"
-                    value={`฿${selectedStats?.totalSpent || 0}`}
-                    color="text-teal-300"
-                  />
-                  <StatChip
-                    label="แต้มจากออเดอร์"
-                    value={(selectedStats?.earnedPoints || 0).toFixed(1)}
-                    color="text-amber-300"
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-[#0D1117] border border-white/10 p-5">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                  <div>
-                    <h3 className="text-base font-black text-white flex items-center gap-2">
-                      <History size={18} className="text-amber-400" />
-                      ประวัติการสั่งซื้อ
-                    </h3>
-                    <p className="text-xs text-neutral-500 mt-1">
-                      แสดงข้อมูลจาก orders ที่ผูกกับสมาชิก #
-                      {selectedMember.phone4}
-                    </p>
-                  </div>
-                </div>
-
-                {selectedOrders.length === 0 ? (
-                  <div className="py-12 text-center border border-dashed border-white/10 rounded-xl text-neutral-500 text-sm font-bold">
-                    สมาชิกนี้ยังไม่มีประวัติการสั่งซื้อ
-                  </div>
-                ) : (
-                  <div className="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
-                    {selectedOrders.map((order) => (
-                      <div
-                        key={order.id}
-                        className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-                          <div>
-                            <p className="text-xs text-neutral-500 font-mono">
-                              #{order.id.slice(-5)} · {fmtDate(order.createdAt)}
-                            </p>
-                            <p className="text-sm font-extrabold text-white mt-0.5">
-                              {order.items
-                                .map(
-                                  (item) =>
-                                    `${item.qty > 1 ? `${item.qty}× ` : ''}${
-                                      item.nameTh
-                                    }`
-                                )
-                                .join(', ')}
-                            </p>
-                          </div>
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-black border ${
-                              order.status === 'done'
-                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
-                                : order.status === 'cancelled'
-                                ? 'bg-rose-500/15 text-rose-300 border-rose-400/30'
-                                : 'bg-amber-500/15 text-amber-300 border-amber-400/30'
-                            }`}
-                          >
-                            {order.status === 'done'
-                              ? 'DONE'
-                              : order.status === 'cancelled'
-                              ? 'CANCELLED'
-                              : 'PENDING'}
-                          </span>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
-                          <span className="text-xs text-neutral-500">
-                            {order.status === 'done'
-                              ? `ได้รับ +${
-                                  order.earnedPoints || order.total / 10
-                                } แต้ม`
-                              : 'ยังไม่เพิ่มแต้ม'}
-                          </span>
-                          <span className="font-mono font-black text-amber-300">
-                            ฿{order.total}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function StatChip({
   label,
   value,
@@ -4119,6 +3994,11 @@ function OrderCard({
               {order.earnedPoints || order.total / 10} แต้ม)
             </span>
           )}
+          {(order.redeemedPoints || 0) > 0 && (
+            <span className="inline-flex items-center gap-1 mt-1 text-xs font-black text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-400/30">
+              🎁 ใช้แต้มแลก {order.redeemedPoints} แต้ม · เมนูที่แลก ฿0
+            </span>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <span
@@ -4136,6 +4016,13 @@ function OrderCard({
         </div>
       </div>
 
+      {order.customerNote && (
+        <div className="relative mt-3 p-3 rounded-xl bg-sky-500/10 border border-sky-400/30">
+          <p className="text-[11px] font-black text-sky-300 mb-1">💬 ข้อความถึงบาริสต้า</p>
+          <p className="text-sm font-semibold text-white break-words">{order.customerNote}</p>
+        </div>
+      )}
+
       <div className="relative mt-3 space-y-2">
         {order.items.map((item, idx) => (
           <div key={idx} className="flex justify-between items-start text-xs">
@@ -4150,8 +4037,13 @@ function OrderCard({
                   {item.sweetness}%
                 </span>
               </p>
+              {item.redeemedWithPoints && (
+                <span className="inline-block mt-1 text-[11px] font-black text-emerald-300 bg-emerald-500/10 border border-emerald-400/30 px-2 py-0.5 rounded">
+                  🎁 ใช้แต้มแลกเมนูนี้ · ราคา ฿0
+                </span>
+              )}
             </div>
-            <span className="font-mono text-neutral-200 font-extrabold text-sm">
+            <span className={`font-mono font-extrabold text-sm ${item.redeemedWithPoints ? 'text-emerald-300' : 'text-neutral-200'}`}>
               ฿{item.total}
             </span>
           </div>
@@ -4554,6 +4446,166 @@ function OrderEditModal({
           <Save size={17} /> บันทึกการแก้ไข (Save Changes)
         </button>
       </div>
+    </div>
+  );
+}
+
+function CustomersManager({ allOrders }: { allOrders: Order[] }) {
+  const [members, setMembers] = useState<Record<string, MemberData>>({});
+  const [search, setSearch] = useState<string>('');
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
+
+  useEffect(() => {
+    const membersRef = ref(db, 'members');
+    const unsubscribe = onValue(membersRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      setMembers(data);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const rows = useMemo(() => {
+    const phones = new Set<string>([
+      ...Object.keys(members),
+      ...allOrders.map((o) => o.memberPhoneCode || '').filter(Boolean),
+    ]);
+
+    return Array.from(phones)
+      .map((phone4) => {
+        const member = members[phone4];
+        const history = allOrders.filter((o) => o.memberPhoneCode === phone4);
+        const doneOrders = history.filter((o) => o.status === 'done');
+        const totalSpent = doneOrders.reduce((sum, o) => sum + o.total, 0);
+        const earned = doneOrders.reduce((sum, o) => sum + (o.earnedPoints || 0), 0);
+        const redeemed = history.reduce((sum, o) => sum + (o.redeemedPoints || 0), 0);
+        const lastOrder = history.length ? Math.max(...history.map((o) => o.createdAt)) : 0;
+        return {
+          phone4,
+          points: Number(member?.points || 0),
+          orderCount: history.length,
+          doneCount: doneOrders.length,
+          totalSpent,
+          earned,
+          redeemed,
+          lastOrder,
+        };
+      })
+      .filter((row) => row.phone4.includes(search.trim()))
+      .sort((a, b) => b.lastOrder - a.lastOrder);
+  }, [members, allOrders, search]);
+
+  const selected = selectedPhone ? rows.find((r) => r.phone4 === selectedPhone) : null;
+  const selectedHistory = selectedPhone
+    ? allOrders.filter((o) => o.memberPhoneCode === selectedPhone)
+    : [];
+
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+          <h2 className="text-xl font-black text-cyan-300 flex items-center gap-2">
+            <Users size={22} /> Customer / Members
+          </h2>
+          <p className="text-sm text-neutral-400 mt-1">
+            ข้อมูลสมาชิก คะแนน และประวัติการสั่งซื้อจาก Firebase
+          </p>
+        </div>
+        <div className="relative w-full sm:w-64">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            inputMode="numeric"
+            maxLength={4}
+            placeholder="ค้นหาเบอร์ 4 หลัก"
+            className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-cyan-400"
+          />
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl text-neutral-400 font-bold">
+          ยังไม่พบข้อมูลสมาชิก
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {rows.map((row) => (
+            <button
+              key={row.phone4}
+              onClick={() => setSelectedPhone(row.phone4)}
+              className="text-left p-4 rounded-2xl bg-[#0D1117] border border-white/10 hover:border-cyan-400/40 transition-colors"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-neutral-400 font-bold">สมาชิก</p>
+                  <p className="text-xl font-black font-mono text-white">#{row.phone4}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-amber-300 font-bold">คะแนนคงเหลือ</p>
+                  <p className="text-2xl font-black font-mono text-amber-400">{row.points}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-white/10 text-center">
+                <div><p className="text-[10px] text-neutral-500">ออเดอร์</p><p className="font-black text-white">{row.orderCount}</p></div>
+                <div><p className="text-[10px] text-neutral-500">ซื้อสะสม</p><p className="font-black text-teal-300">฿{row.totalSpent}</p></div>
+                <div><p className="text-[10px] text-neutral-500">ใช้แต้ม</p><p className="font-black text-emerald-300">{row.redeemed}</p></div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected && (
+        <div className="mt-6 p-5 rounded-3xl bg-[#0D1117] border border-cyan-400/30">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <p className="text-xs text-neutral-400 font-bold">รายละเอียดสมาชิก</p>
+              <h3 className="text-2xl font-black text-white font-mono">#{selected.phone4}</h3>
+            </div>
+            <button
+              onClick={() => setSelectedPhone(null)}
+              className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            <StatChip label="คะแนนคงเหลือ" value={selected.points} color="text-amber-300" />
+            <StatChip label="ออเดอร์" value={selected.orderCount} color="text-cyan-300" />
+            <StatChip label="ยอดซื้อสะสม" value={`฿${selected.totalSpent}`} color="text-teal-300" />
+            <StatChip label="ใช้แต้มรวม" value={selected.redeemed} color="text-emerald-300" />
+          </div>
+
+          <h4 className="text-sm font-black text-neutral-300 mb-3 flex items-center gap-2">
+            <History size={16} /> ประวัติการซื้อ
+          </h4>
+          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            {selectedHistory.map((order) => (
+              <div key={order.id} className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-neutral-500 font-mono">#{order.id.slice(-5)} · {fmtDate(order.createdAt)}</p>
+                    <p className="text-sm font-black text-white mt-1">
+                      {order.items.map((i) => `${i.qty}× ${i.nameTh}`).join(' · ')}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-mono font-black text-amber-300">฿{order.total}</p>
+                    <p className="text-[11px] font-bold text-neutral-400">{order.status}</p>
+                  </div>
+                </div>
+                {(order.redeemedPoints || 0) > 0 && (
+                  <p className="mt-2 text-xs font-black text-emerald-300">🎁 ใช้แต้มแลก {order.redeemedPoints} แต้ม</p>
+                )}
+                {order.customerNote && (
+                  <p className="mt-2 text-xs text-sky-300">💬 {order.customerNote}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
