@@ -111,6 +111,9 @@ interface CartItem {
   qty: number;
   unitPrice: number;
   total: number;
+  originalUnitPrice?: number;
+  redeemedWithPoints?: boolean;
+  pointsCost?: number;
 }
 
 interface Order {
@@ -119,6 +122,9 @@ interface Order {
   memberPhoneCode?: string;
   earnedPoints?: number;
   pointsProcessed?: boolean;
+  redeemedPoints?: number;
+  pointsRedeemed?: boolean;
+  pointsRefunded?: boolean;
   note?: string;
   items: CartItem[];
   total: number;
@@ -580,6 +586,7 @@ export default function App() {
   const [view, setView] = useState<'customer' | 'barista'>(getViewFromURL);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [memberPhoneCode, setMemberPhoneCode] = useState<string>('');
+  const [memberInfo, setMemberInfo] = useState<MemberData | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [modalItem, setModalItem] = useState<MenuItem | null>(null);
   const [orderNote, setOrderNote] = useState<string>('');
@@ -705,6 +712,9 @@ export default function App() {
             memberPhoneCode: itemData.memberPhoneCode || '',
             earnedPoints: itemData.earnedPoints || 0,
             pointsProcessed: itemData.pointsProcessed || false,
+            redeemedPoints: itemData.redeemedPoints || 0,
+            pointsRedeemed: itemData.pointsRedeemed || false,
+            pointsRefunded: itemData.pointsRefunded || false,
             note: itemData.note || '',
             items,
             total: itemData.total || items.reduce((s, i) => s + i.total, 0),
@@ -751,6 +761,26 @@ export default function App() {
 
     return () => unsubscribeExpenses();
   }, []);
+
+  /* ------------------------------------------------------------------ */
+  /*  LIVE MEMBER POINT BALANCE — ใช้ทั้งใน CustomizeModal และตะกร้า      */
+  /* ------------------------------------------------------------------ */
+  useEffect(() => {
+    const code = memberPhoneCode.trim();
+    if (code.length === 4) {
+      const memberRef = ref(db, `members/${code}`);
+      const unsubscribeMember = onValue(memberRef, (snapshot) => {
+        if (snapshot.exists()) {
+          setMemberInfo(snapshot.val());
+        } else {
+          setMemberInfo({ phone4: code, points: 0, updatedAt: Date.now() });
+        }
+      });
+      return () => unsubscribeMember();
+    } else {
+      setMemberInfo(null);
+    }
+  }, [memberPhoneCode]);
 
   useEffect(() => {
     function onNav() {
@@ -811,7 +841,7 @@ export default function App() {
     setModalItem(null);
   }
 
-  function handleInstantOrder() {
+  async function handleInstantOrder(usePoints: boolean) {
     if (!shopOpen) {
       setToast('ร้านปิดอยู่ ไม่สามารถส่งออเดอร์ได้');
       return;
@@ -820,7 +850,28 @@ export default function App() {
 
     const trimmedPhone = memberPhoneCode.trim();
     const isMember = trimmedPhone.length === 4;
-    const totalAmount = modalItem.price * qty;
+    const fullPrice = modalItem.price * qty;
+    const pointsCost = usePoints && isMember ? fullPrice : 0;
+
+    let memberPointsAfter = 0;
+    if (pointsCost > 0) {
+      const memberRef = ref(db, `members/${trimmedPhone}`);
+      const snap = await get(memberRef);
+      if (!snap.exists()) {
+        setToast(`ไม่พบสมาชิก #${trimmedPhone}`);
+        return;
+      }
+      const currentPoints = Number(snap.val().points || 0);
+      if (currentPoints < pointsCost) {
+        setToast(
+          `แต้มไม่พอสำหรับการแลก (มี ${currentPoints} แต้ม แต่ต้องใช้ ${pointsCost} แต้ม)`
+        );
+        return;
+      }
+      memberPointsAfter = currentPoints - pointsCost;
+    }
+
+    const totalAmount = fullPrice - pointsCost;
     const earnedPoints = isMember ? totalAmount / 10 : 0;
 
     const singleItem: CartItem = {
@@ -833,8 +884,11 @@ export default function App() {
       theme: modalItem.theme,
       sweetness,
       qty,
-      unitPrice: modalItem.price,
+      unitPrice: pointsCost > 0 ? 0 : modalItem.price,
       total: totalAmount,
+      originalUnitPrice: pointsCost > 0 ? modalItem.price : undefined,
+      redeemedWithPoints: pointsCost > 0,
+      pointsCost: pointsCost > 0 ? pointsCost : undefined,
     };
 
     const newOrderData = {
@@ -851,10 +905,36 @@ export default function App() {
 
     const ordersRef = ref(db, 'orders');
     const newOrderRef = push(ordersRef);
-    set(newOrderRef, newOrderData);
+
+    try {
+      if (pointsCost > 0) {
+        await set(ref(db, `members/${trimmedPhone}`), {
+          phone4: trimmedPhone,
+          points: memberPointsAfter,
+          updatedAt: Date.now(),
+        });
+      }
+      await set(newOrderRef, newOrderData);
+    } catch (err) {
+      if (pointsCost > 0) {
+        const memberRef = ref(db, `members/${trimmedPhone}`);
+        const rollbackSnap = await get(memberRef);
+        if (rollbackSnap.exists()) {
+          const rollbackPoints = Number(rollbackSnap.val().points || 0);
+          await update(memberRef, {
+            points: rollbackPoints + pointsCost,
+            updatedAt: Date.now(),
+          });
+        }
+      }
+      setToast('เกิดข้อผิดพลาดในการส่งออเดอร์ กรุณาลองใหม่');
+      return;
+    }
 
     setToast(
-      isMember
+      pointsCost > 0
+        ? `สั่งทันทีเรียบร้อย! (แลกฟรีด้วย ${pointsCost} แต้ม)`
+        : isMember
         ? `สั่งทันทีเรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้ากดรับ/ทำเสร็จ)`
         : 'สั่งทันทีเรียบร้อย! (รายการของ Guest)'
     );
@@ -887,7 +967,79 @@ export default function App() {
     );
   }
 
-  function submitCartOrder() {
+  async function redeemCartItem(cartId: string) {
+    const trimmedPhone = memberPhoneCode.trim();
+    if (trimmedPhone.length !== 4) {
+      setToast('กรุณากรอกเบอร์สมาชิก 4 หลักก่อนใช้แต้มแลกเมนู');
+      return;
+    }
+
+    const target = cart.find((item) => item.cartId === cartId);
+    if (!target || target.redeemedWithPoints) return;
+
+    const memberSnap = await get(ref(db, `members/${trimmedPhone}`));
+    if (!memberSnap.exists()) {
+      setToast(`ไม่พบสมาชิก #${trimmedPhone}`);
+      return;
+    }
+
+    const currentPoints = Number(memberSnap.val().points || 0);
+    const alreadySelected = cart.reduce(
+      (sum, item) =>
+        sum +
+        (item.redeemedWithPoints
+          ? item.pointsCost || item.unitPrice * item.qty
+          : 0),
+      0
+    );
+    const pointsCost =
+      (target.originalUnitPrice ?? target.unitPrice) * target.qty;
+
+    if (currentPoints - alreadySelected < pointsCost) {
+      setToast(
+        `คะแนนไม่พอสำหรับ ${target.nameTh} (ต้องใช้ ${pointsCost} แต้ม)`
+      );
+      return;
+    }
+
+    setCart((prev) =>
+      prev.map((item) =>
+        item.cartId === cartId
+          ? {
+              ...item,
+              originalUnitPrice: item.originalUnitPrice ?? item.unitPrice,
+              unitPrice: 0,
+              total: 0,
+              redeemedWithPoints: true,
+              pointsCost,
+            }
+          : item
+      )
+    );
+    setToast(`เลือก ${target.nameTh} เพื่อแลกด้วย ${pointsCost} แต้มแล้ว`);
+  }
+
+  function unredeemCartItem(cartId: string) {
+    setCart((prev) =>
+      prev.map((item) => {
+        if (item.cartId !== cartId) return item;
+        const originalPrice =
+          item.originalUnitPrice ??
+          menu.find((m) => m.id === item.itemId)?.price ??
+          0;
+        return {
+          ...item,
+          unitPrice: originalPrice,
+          total: originalPrice * item.qty,
+          redeemedWithPoints: false,
+          pointsCost: 0,
+        };
+      })
+    );
+    setToast('ยกเลิกการใช้แต้มแลกเมนูแล้ว');
+  }
+
+  async function submitCartOrder() {
     if (!shopOpen) {
       setToast('ร้านปิดอยู่ ไม่สามารถส่งออเดอร์ได้');
       return;
@@ -896,8 +1048,36 @@ export default function App() {
 
     const trimmedPhone = memberPhoneCode.trim();
     const isMember = trimmedPhone.length === 4;
+    const redeemedPoints = isMember
+      ? cart.reduce(
+          (sum, item) =>
+            sum +
+            (item.redeemedWithPoints
+              ? item.pointsCost || item.unitPrice * item.qty
+              : 0),
+          0
+        )
+      : 0;
     const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
     const earnedPoints = isMember ? totalAmount / 10 : 0;
+
+    let memberPointsAfterRedeem = 0;
+    if (isMember && redeemedPoints > 0) {
+      const memberRef = ref(db, `members/${trimmedPhone}`);
+      const snapshot = await get(memberRef);
+      if (!snapshot.exists()) {
+        setToast(`ไม่พบสมาชิก #${trimmedPhone}`);
+        return;
+      }
+      const currentPoints = Number(snapshot.val().points || 0);
+      if (currentPoints < redeemedPoints) {
+        setToast(
+          `คะแนนไม่พอสำหรับการแลก (มี ${currentPoints} แต้ม แต่ต้องใช้ ${redeemedPoints} แต้ม)`
+        );
+        return;
+      }
+      memberPointsAfterRedeem = currentPoints - redeemedPoints;
+    }
 
     const newOrderData = {
       customerName: isMember ? `สมาชิก #${trimmedPhone}` : 'Guest',
@@ -913,10 +1093,36 @@ export default function App() {
 
     const ordersRef = ref(db, 'orders');
     const newOrderRef = push(ordersRef);
-    set(newOrderRef, newOrderData);
+
+    try {
+      if (isMember && redeemedPoints > 0) {
+        await set(ref(db, `members/${trimmedPhone}`), {
+          phone4: trimmedPhone,
+          points: memberPointsAfterRedeem,
+          updatedAt: Date.now(),
+        });
+      }
+      await set(newOrderRef, newOrderData);
+    } catch (err) {
+      if (isMember && redeemedPoints > 0) {
+        const memberRef = ref(db, `members/${trimmedPhone}`);
+        const rollbackSnap = await get(memberRef);
+        if (rollbackSnap.exists()) {
+          const rollbackPoints = Number(rollbackSnap.val().points || 0);
+          await update(memberRef, {
+            points: rollbackPoints + redeemedPoints,
+            updatedAt: Date.now(),
+          });
+        }
+      }
+      setToast('ไม่สามารถส่งออเดอร์ได้ กรุณาลองใหม่อีกครั้ง');
+      return;
+    }
 
     setToast(
-      isMember
+      redeemedPoints > 0
+        ? `ส่งออเดอร์เรียบร้อย! ใช้ ${redeemedPoints} แต้มแลกเมนู และชำระ ฿${totalAmount}`
+        : isMember
         ? `ส่งออเดอร์เรียบร้อย! (คุณจะได้รับ +${earnedPoints} แต้มเมื่อบาริสต้ากดรับ/ทำเสร็จ)`
         : 'ส่งออเดอร์เรียบร้อย! (รายการของ Guest)'
     );
@@ -1107,6 +1313,7 @@ export default function App() {
           menu={menu}
           memberPhoneCode={memberPhoneCode}
           setMemberPhoneCode={setMemberPhoneCode}
+          memberInfo={memberInfo}
           openModal={openModal}
           soundOn={soundOn}
           setSoundOn={setSoundOn}
@@ -1114,6 +1321,8 @@ export default function App() {
           removeFromCart={removeFromCart}
           updateCartQty={updateCartQty}
           submitCartOrder={submitCartOrder}
+          redeemCartItem={redeemCartItem}
+          unredeemCartItem={unredeemCartItem}
           shopOpen={shopOpen}
           shopMessage={shopMessage}
           orders={orders}
@@ -1159,6 +1368,7 @@ export default function App() {
           setSweetness={setSweetness}
           qty={qty}
           setQty={setQty}
+          availablePoints={memberInfo?.points ?? 0}
           onClose={closeModal}
           onAddToCart={addToCart}
           onInstantOrder={handleInstantOrder}
@@ -1313,6 +1523,7 @@ interface CustomerViewProps {
   menu: MenuItem[];
   memberPhoneCode: string;
   setMemberPhoneCode: (code: string) => void;
+  memberInfo: MemberData | null;
   openModal: (item: MenuItem) => void;
   soundOn: boolean;
   setSoundOn: (val: boolean) => void;
@@ -1326,12 +1537,15 @@ interface CustomerViewProps {
   setToast: (msg: string) => void;
   orderNote: string;
   setOrderNote: (note: string) => void;
+  redeemCartItem: (cartId: string) => void;
+  unredeemCartItem: (cartId: string) => void;
 }
 
 function CustomerView({
   menu,
   memberPhoneCode,
   setMemberPhoneCode,
+  memberInfo,
   openModal,
   soundOn,
   setSoundOn,
@@ -1345,12 +1559,13 @@ function CustomerView({
   setToast,
   orderNote,
   setOrderNote,
+  redeemCartItem,
+  unredeemCartItem,
 }: CustomerViewProps) {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | null>(
     null
   );
-  const [memberInfo, setMemberInfo] = useState<MemberData | null>(null);
 
   const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(false);
 
@@ -1381,23 +1596,6 @@ function CustomerView({
   const pendingOrdersCount = useMemo(() => {
     return orders.filter((o) => o.status === 'pending').length;
   }, [orders]);
-
-  useEffect(() => {
-    const code = memberPhoneCode.trim();
-    if (code.length === 4) {
-      const memberRef = ref(db, `members/${code}`);
-      const unsubscribe = onValue(memberRef, (snapshot) => {
-        if (snapshot.exists()) {
-          setMemberInfo(snapshot.val());
-        } else {
-          setMemberInfo({ phone4: code, points: 0, updatedAt: Date.now() });
-        }
-      });
-      return () => unsubscribe();
-    } else {
-      setMemberInfo(null);
-    }
-  }, [memberPhoneCode]);
 
   const memberHistory = useMemo(() => {
     const code = memberPhoneCode.trim();
@@ -1793,9 +1991,36 @@ function CustomerView({
                         <span className="text-xs font-bold text-amber-300">
                           หวาน {item.sweetness}%
                         </span>
-                        <span className="text-xs text-neutral-400 font-mono">
-                          ฿{item.unitPrice}/แก้ว
-                        </span>
+                        {item.redeemedWithPoints ? (
+                          <span className="text-xs font-black text-emerald-300 bg-emerald-500/10 border border-emerald-400/30 px-2 py-0.5 rounded">
+                            🎁 ใช้แต้ม {item.pointsCost} แต้ม · ฿0
+                          </span>
+                        ) : (
+                          <span className="text-xs text-neutral-400 font-mono">
+                            ฿{item.unitPrice}/แก้ว
+                          </span>
+                        )}
+                        {memberPhoneCode.trim().length === 4 && (
+                          <button
+                            onClick={() =>
+                              item.redeemedWithPoints
+                                ? unredeemCartItem(item.cartId)
+                                : redeemCartItem(item.cartId)
+                            }
+                            className={`mt-2 px-2.5 py-1 rounded-lg text-[11px] font-black border transition-colors ${
+                              item.redeemedWithPoints
+                                ? 'bg-rose-500/10 border-rose-400/30 text-rose-300 hover:bg-rose-500/20'
+                                : 'bg-amber-400/10 border-amber-400/30 text-amber-300 hover:bg-amber-400/20'
+                            }`}
+                          >
+                            {item.redeemedWithPoints
+                              ? 'ยกเลิกใช้แต้ม'
+                              : `🎁 ใช้ ${
+                                  (item.originalUnitPrice ?? item.unitPrice) *
+                                  item.qty
+                                } แต้มแลกเมนูนี้`}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1844,6 +2069,19 @@ function CustomerView({
                     ฿{cartTotal}
                   </span>
                 </div>
+
+                {cart.some((item) => item.redeemedWithPoints) && (
+                  <div className="mb-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-400/30 text-emerald-300 text-xs font-black">
+                    🎁 ใช้แต้มแลกแล้ว{' '}
+                    {cart.reduce(
+                      (sum, item) =>
+                        sum +
+                        (item.redeemedWithPoints ? item.pointsCost || 0 : 0),
+                      0
+                    )}{' '}
+                    แต้ม · เมนูที่แลกคิดราคา ฿0
+                  </div>
+                )}
 
                 <div className="mb-4 text-xs sm:text-sm text-emerald-400 font-bold flex items-center gap-1.5">
                   <Award size={16} />{' '}
@@ -1918,9 +2156,10 @@ interface CustomizeModalProps {
   setSweetness: (val: number) => void;
   qty: number;
   setQty: (val: number) => void;
+  availablePoints: number;
   onClose: () => void;
   onAddToCart: () => void;
-  onInstantOrder: () => void;
+  onInstantOrder: (usePoints: boolean) => void;
   orderNote: string;
   setOrderNote: (note: string) => void;
 }
@@ -1931,6 +2170,7 @@ function CustomizeModal({
   setSweetness,
   qty,
   setQty,
+  availablePoints,
   onClose,
   onAddToCart,
   onInstantOrder,
@@ -1939,6 +2179,12 @@ function CustomizeModal({
 }: CustomizeModalProps) {
   const total = item.price * qty;
   const activeSweetPresets = getSweetPresetsForItem(item.name);
+  const [usePoints, setUsePoints] = useState<boolean>(false);
+  const canRedeem = availablePoints >= total && total > 0;
+
+  useEffect(() => {
+    setUsePoints(false);
+  }, [item.id, qty]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -2029,9 +2275,30 @@ function CustomizeModal({
         <div className="mt-6 flex items-center justify-between text-base">
           <span className="text-neutral-300 font-bold">ราคารวม</span>
           <span className="font-mono font-black text-2xl text-amber-400">
-            ฿{total}
+            {usePoints ? '🎁 0 บาท' : `฿${total}`}
           </span>
         </div>
+
+        {canRedeem && (
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setUsePoints((v) => !v)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-colors ${
+                usePoints
+                  ? 'bg-rose-500/10 border-rose-400/30 text-rose-300 hover:bg-rose-500/20'
+                  : 'bg-amber-400/10 border-amber-400/30 text-amber-300 hover:bg-amber-400/20'
+              }`}
+            >
+              {usePoints ? 'ยกเลิกใช้แต้ม' : `🎁 ใช้ ${total} แต้มแลกฟรี`}
+            </button>
+          </div>
+        )}
+        {!canRedeem && availablePoints > 0 && total > 0 && (
+          <p className="mt-2 text-right text-xs text-neutral-500">
+            แต้มไม่พอสำหรับแลกฟรี (มี {availablePoints} / ต้องการ {total} แต้ม)
+          </p>
+        )}
 
         <div className="mt-5">
           <input
@@ -2052,7 +2319,7 @@ function CustomizeModal({
             <Plus size={18} /> เพิ่มลงตะกร้า
           </button>
           <button
-            onClick={onInstantOrder}
+            onClick={() => onInstantOrder(usePoints)}
             className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-black text-sm sm:text-base active:scale-[0.98] transition-all shadow-[0_0_25px_-5px_rgba(245,158,11,0.6)]"
           >
             <Send size={18} /> สั่งทันที
@@ -3794,6 +4061,11 @@ function OrderCard({
               {order.customerName}
             </span>
           </div>
+          {(order.redeemedPoints || 0) > 0 && (
+            <span className="inline-flex items-center gap-1 mt-1 text-xs font-black text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-400/30">
+              🎁 ใช้แต้มแลก {order.redeemedPoints} แต้ม · เมนูที่แลก ฿0
+            </span>
+          )}
           {order.memberPhoneCode && (
             <span className="inline-block mt-1 text-xs font-mono font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
               สมาชิก #{order.memberPhoneCode} (+
