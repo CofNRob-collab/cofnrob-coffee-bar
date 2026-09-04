@@ -2291,7 +2291,7 @@ function CustomizeModal({
 
         <div className="mt-4">
           <label className="block text-xs font-bold text-neutral-400 mb-1">
-            ข้อความถึงบาริสต้า (สำหรับสั่งด่วน)
+            ข้อความถึงบาริสต้า
           </label>
           <input
             type="text"
@@ -2306,7 +2306,7 @@ function CustomizeModal({
         <div className="mt-5 flex items-center justify-between text-base">
           <span className="text-neutral-300 font-bold">ราคารวม</span>
           <span className="font-mono font-black text-2xl text-amber-400">
-            {usePoints ? '🎁 0 แต้ม' : `฿${total}`}
+            {usePoints ? '🎁 0 บาท' : `฿${total}`}
           </span>
         </div>
 
