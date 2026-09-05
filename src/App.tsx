@@ -886,9 +886,9 @@ export default function App() {
       qty,
       unitPrice: pointsCost > 0 ? 0 : modalItem.price,
       total: totalAmount,
-      originalUnitPrice: pointsCost > 0 ? modalItem.price : undefined,
+      originalUnitPrice: modalItem.price,
       redeemedWithPoints: pointsCost > 0,
-      pointsCost: pointsCost > 0 ? pointsCost : undefined,
+      pointsCost: pointsCost,
     };
 
     const newOrderData = {
@@ -896,6 +896,8 @@ export default function App() {
       memberPhoneCode: isMember ? trimmedPhone : '',
       earnedPoints: earnedPoints,
       pointsProcessed: false,
+      redeemedPoints: pointsCost,
+      pointsRefunded: false,
       note: orderNote.trim(),
       items: [singleItem],
       total: totalAmount,
@@ -1084,6 +1086,8 @@ export default function App() {
       memberPhoneCode: isMember ? trimmedPhone : '',
       earnedPoints: earnedPoints,
       pointsProcessed: false,
+      redeemedPoints: redeemedPoints,
+      pointsRefunded: false,
       note: orderNote.trim(),
       items: cart,
       total: totalAmount,
@@ -1157,6 +1161,31 @@ export default function App() {
       update(orderRef, { status: 'done', pointsProcessed: true });
       sound.playDone();
       setToast(`เพิ่ม ${pointsToAdd} แต้มให้สมาชิก #${phone4} เรียบร้อยแล้ว!`);
+    } else if (
+      status === 'cancelled' &&
+      targetOrder.memberPhoneCode &&
+      (targetOrder.redeemedPoints || 0) > 0 &&
+      !targetOrder.pointsRefunded
+    ) {
+      // ออเดอร์นี้เคยใช้แต้มแลกเมนูไป — ถ้าโดนยกเลิก ต้องคืนแต้มที่หักไปกลับให้สมาชิก
+      const phone4 = targetOrder.memberPhoneCode;
+      const pointsToRefund = targetOrder.redeemedPoints || 0;
+
+      const memberRef = ref(db, `members/${phone4}`);
+      const snapshot = await get(memberRef);
+      const currentPoints = snapshot.exists() ? snapshot.val().points || 0 : 0;
+
+      await set(memberRef, {
+        phone4,
+        points: currentPoints + pointsToRefund,
+        updatedAt: Date.now(),
+      });
+
+      const orderRef = ref(db, `orders/${id}`);
+      update(orderRef, { status: 'cancelled', pointsRefunded: true });
+      setToast(
+        `ยกเลิกออเดอร์แล้ว — คืนแต้ม ${pointsToRefund} แต้มให้สมาชิก #${phone4} เรียบร้อย`
+      );
     } else {
       const orderRef = ref(db, `orders/${id}`);
       update(orderRef, { status });
@@ -1218,6 +1247,27 @@ export default function App() {
       pointsProcessed = true;
     }
 
+    // 3) ถ้าสถานะหลังแก้ไขคือ "cancelled" และออเดอร์เดิมเคยใช้แต้มแลกเมนูไป (ยังไม่เคยคืน)
+    //    ต้องคืนแต้มที่หักไปกลับให้สมาชิกด้วย
+    let pointsRefunded = original.pointsRefunded || false;
+    if (
+      updates.status === 'cancelled' &&
+      original.memberPhoneCode &&
+      (original.redeemedPoints || 0) > 0 &&
+      !original.pointsRefunded
+    ) {
+      const refundRef = ref(db, `members/${original.memberPhoneCode}`);
+      const refundSnap = await get(refundRef);
+      const refundCurrentPoints = refundSnap.exists()
+        ? refundSnap.val().points || 0
+        : 0;
+      await update(refundRef, {
+        points: refundCurrentPoints + (original.redeemedPoints || 0),
+        updatedAt: Date.now(),
+      });
+      pointsRefunded = true;
+    }
+
     const orderRef = ref(db, `orders/${id}`);
     await update(orderRef, {
       customerName: updates.customerName.trim() || 'Guest',
@@ -1227,6 +1277,7 @@ export default function App() {
       status: updates.status,
       earnedPoints: newEarnedPoints,
       pointsProcessed,
+      pointsRefunded,
     });
 
     setToast('แก้ไขออเดอร์เรียบร้อยแล้ว (Order updated)');
@@ -4111,7 +4162,7 @@ function OrderCard({
         ))}
       </div>
 
-      {isHistory && order.note && (
+      {order.note && (
         <div className="relative mt-3 p-3 rounded-xl bg-teal-500/10 border border-teal-400/20">
           <div className="text-[11px] font-bold text-teal-300 mb-1">
             ข้อความถึงบาริสต้า
